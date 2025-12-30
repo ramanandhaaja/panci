@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(openspec list:*)",
+      "Bash(openspec init:*)",
+      "Bash(mkdir:*)",
+      "Bash(openspec validate:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(flutter test:*)",
+      "Bash(tree:*)",
+      "Bash(flutter build:*)",
+      "Bash(flutter pub get:*)",
+      "Bash(flutter clean:*)",
+      "Bash(pod install)",
+      "Bash(pod install:*)",
+      "Bash(git config:*)",
+      "Bash(flutter run:*)"
+    ]
+  }
+}

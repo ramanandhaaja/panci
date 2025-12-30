@@ -1,30 +1,34 @@
-// This is a basic Flutter widget test.
+// Basic widget tests for the Panci shared canvas application.
 //
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// These tests verify the core UI screens and navigation flow.
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:panci/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
+  testWidgets('App starts with home screen', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+    await tester.pumpWidget(const PanciApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // Verify that the home screen is displayed
+    expect(find.text('Shared Canvas'), findsWidgets);
+    expect(find.text('Welcome!'), findsOneWidget);
+    expect(find.text('Join or Create Canvas'), findsOneWidget);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  testWidgets('Navigation to join screen works', (WidgetTester tester) async {
+    // Build our app and trigger a frame.
+    await tester.pumpWidget(const PanciApp());
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Tap the "Join or Create Canvas" button
+    await tester.tap(find.text('Join or Create Canvas'));
+    await tester.pumpAndSettle();
+
+    // Verify that the join screen is displayed
+    expect(find.text('Join or Create Canvas'), findsWidgets);
+    expect(find.text('Canvas ID'), findsOneWidget);
+    expect(find.text('Join Canvas'), findsOneWidget);
+    expect(find.text('Create New Canvas'), findsOneWidget);
   });
 }

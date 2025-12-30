@@ -2,6 +2,23 @@
 
 Instructions for AI coding assistants using OpenSpec for spec-driven development.
 
+## Flutter Project Conventions
+
+This is a Flutter project following Clean Architecture principles. All code MUST adhere to these conventions.
+
+## Agent Delegation for Coding
+
+**IMPORTANT**: Always use the `flutter-architect` agent for all coding tasks.
+
+- **Planning**: You can plan and create proposals yourself
+- **Implementation**: Delegate ALL coding work to the `flutter-architect` agent using the Task tool
+- **Reason**: The `flutter-architect` agent has deep knowledge of the project structure and coding conventions
+
+When you need to implement code, use:
+```
+Task tool with subagent_type='flutter-architect'
+```
+
 ## TL;DR Quick Checklist
 
 - Search existing work: `openspec spec list --long`, `openspec list` (use `rg` only for full-text search)
