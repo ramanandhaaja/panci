@@ -15,6 +15,8 @@ class DrawingDataModel {
     required this.strokes,
     required this.lastUpdated,
     required this.version,
+    this.imageUrl,
+    this.lastExported,
   });
 
   /// Creates a model from a JSON map (from Firestore).
@@ -34,7 +36,9 @@ class DrawingDataModel {
   ///     }
   ///   ],
   ///   "lastUpdated": "2025-01-01T12:00:00.000Z",
-  ///   "version": 1
+  ///   "version": 1,
+  ///   "imageUrl": "https://storage.firebase.com/...",
+  ///   "lastExported": "2025-01-01T12:30:00.000Z"
   /// }
   /// ```
   factory DrawingDataModel.fromJson(Map<String, dynamic> json) {
@@ -45,6 +49,8 @@ class DrawingDataModel {
           .toList(),
       lastUpdated: json['lastUpdated'] as String,
       version: json['version'] as int,
+      imageUrl: json['imageUrl'] as String?,
+      lastExported: json['lastExported'] as String?,
     );
   }
 
@@ -59,6 +65,8 @@ class DrawingDataModel {
           .toList(),
       lastUpdated: entity.lastUpdated.toIso8601String(),
       version: entity.version,
+      imageUrl: entity.imageUrl,
+      lastExported: entity.lastExported?.toIso8601String(),
     );
   }
 
@@ -79,17 +87,36 @@ class DrawingDataModel {
   /// Version number for this drawing, incremented with each modification.
   final int version;
 
+  /// The download URL for the exported canvas image.
+  ///
+  /// Will be null if the canvas has never been exported.
+  final String? imageUrl;
+
+  /// When this canvas was last exported to PNG, stored as ISO 8601 string.
+  ///
+  /// Will be null if the canvas has never been exported.
+  final String? lastExported;
+
   /// Converts this model to a JSON map for Firestore storage.
   ///
   /// Returns a map with all primitive types suitable for JSON serialization.
   /// The strokes list is already in JSON format, so no conversion is needed.
   Map<String, dynamic> toJson() {
-    return {
+    final json = {
       'canvasId': canvasId,
       'strokes': strokes,
       'lastUpdated': lastUpdated,
       'version': version,
     };
+
+    if (imageUrl != null) {
+      json['imageUrl'] = imageUrl!;
+    }
+    if (lastExported != null) {
+      json['lastExported'] = lastExported!;
+    }
+
+    return json;
   }
 
   /// Converts this model to a domain entity.
@@ -105,6 +132,8 @@ class DrawingDataModel {
           .toList(),
       lastUpdated: DateTime.parse(lastUpdated),
       version: version,
+      imageUrl: imageUrl,
+      lastExported: lastExported != null ? DateTime.parse(lastExported!) : null,
     );
   }
 
@@ -116,7 +145,9 @@ class DrawingDataModel {
         other.canvasId == canvasId &&
         _listEquals(other.strokes, strokes) &&
         other.lastUpdated == lastUpdated &&
-        other.version == version;
+        other.version == version &&
+        other.imageUrl == imageUrl &&
+        other.lastExported == lastExported;
   }
 
   @override
@@ -126,6 +157,8 @@ class DrawingDataModel {
       Object.hashAll(strokes),
       lastUpdated,
       version,
+      imageUrl,
+      lastExported,
     );
   }
 

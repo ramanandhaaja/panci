@@ -1,0 +1,23 @@
+rules_version = '2';
+
+// Firebase Storage Security Rules for Panci Canvas App
+// These rules allow authenticated users to upload and view canvas images
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Canvas images - stored at canvases/{canvasId}/latest.png
+    match /canvases/{canvasId}/{fileName} {
+      // Allow authenticated users to read canvas images
+      allow read: if request.auth != null;
+
+      // Allow authenticated users to upload/update canvas images
+      // Only PNG files under 5MB are allowed
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType == 'image/png';
+
+      // Allow authenticated users to delete canvas images
+      allow delete: if request.auth != null;
+    }
+  }
+}

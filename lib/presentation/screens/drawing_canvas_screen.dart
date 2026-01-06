@@ -5,6 +5,7 @@ import 'package:panci/presentation/widgets/color_picker.dart';
 import 'package:panci/presentation/widgets/brush_size_selector.dart';
 import 'package:panci/presentation/widgets/drawing_canvas_widget.dart';
 import 'package:panci/presentation/providers/drawing_provider.dart';
+import 'package:panci/presentation/providers/canvas_export_provider.dart';
 import 'package:panci/domain/entities/drawing_data.dart';
 
 /// Screen that displays the drawing canvas and drawing controls.
@@ -41,6 +42,9 @@ class _DrawingCanvasScreenState extends ConsumerState<DrawingCanvasScreen> {
   // Note: In a production app, you would monitor the actual Firestore
   // connection state. For now, we assume online if no errors occur.
   bool _isOnline = true;
+
+  // Global key for RepaintBoundary (for canvas export)
+  final GlobalKey _repaintBoundaryKey = GlobalKey();
 
   /// Handles the color selection change.
   void _onColorSelected(Color color) {
@@ -98,31 +102,73 @@ class _DrawingCanvasScreenState extends ConsumerState<DrawingCanvasScreen> {
 
   /// Handles the "Done" button tap.
   ///
-  /// Shows a confirmation dialog and navigates back if confirmed.
-  Future<void> _onDonePressed() async {
-    final shouldExit = await showDialog<bool>(
+  /// Simply closes the canvas and returns to the home page.
+  /// Strokes are already auto-saved to Firestore via real-time sync.
+  void _onDonePressed() {
+    Navigator.pop(context);
+  }
+
+  /// Handles the "Publish" button tap.
+  ///
+  /// Shows a confirmation dialog, then generates a PNG image,
+  /// uploads to Firebase Storage, and navigates back if confirmed.
+  Future<void> _onPublishPressed() async {
+    final shouldPublish = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Finish Drawing?'),
+        title: const Text('Publish Canvas?'),
         content: const Text(
-          'Are you done with your drawing? This will save and share your canvas.',
+          'This will generate an image for the home page and widgets. '
+          'Your strokes are already saved.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
-          FilledButton(
+          FilledButton.icon(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Done'),
+            icon: const Icon(Icons.publish),
+            label: const Text('Publish'),
           ),
         ],
       ),
     );
 
-    if (shouldExit == true && mounted) {
-      // Navigate back to the previous screen (home screen)
-      Navigator.pop(context);
+    if (shouldPublish == true && mounted) {
+      // Show export progress dialog
+      final exportSuccess = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => _ExportProgressDialog(
+          canvasId: widget.canvasId,
+          repaintBoundaryKey: _repaintBoundaryKey,
+        ),
+      );
+
+      if (mounted) {
+        if (exportSuccess == true) {
+          // Export successful, navigate back
+          Navigator.pop(context);
+        } else {
+          // Export failed, show error and stay on screen
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.error_outline, color: Colors.white),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text('Failed to publish canvas. Please try again.'),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -199,14 +245,23 @@ class _DrawingCanvasScreenState extends ConsumerState<DrawingCanvasScreen> {
             tooltip: 'Share canvas',
           ),
           const SizedBox(width: 8),
-          // Done button
-          FilledButton.icon(
+          // Publish button (generates image)
+          TextButton.icon(
+            onPressed: _onPublishPressed,
+            icon: const Icon(Icons.publish),
+            label: const Text('Publish'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+            ),
+          ),
+          const SizedBox(width: 4),
+          // Done button (just closes)
+          FilledButton(
             onPressed: _onDonePressed,
-            icon: const Icon(Icons.check),
-            label: const Text('Done'),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 16),
             ),
+            child: const Text('Done'),
           ),
           const SizedBox(width: 8),
         ],
@@ -284,31 +339,37 @@ class _DrawingCanvasScreenState extends ConsumerState<DrawingCanvasScreen> {
             },
           ),
 
-          // Drawing canvas container
+          // Drawing canvas container - square aspect ratio
           Expanded(
-            child: Container(
-              margin: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: theme.colorScheme.outline,
-                  width: 2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: 1.0, // Force square (1:1) aspect ratio
+                child: Container(
+                  margin: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: theme.colorScheme.outline,
+                      width: 2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: DrawingCanvasWidget(
-                  canvasId: widget.canvasId,
-                  selectedColor: _selectedColor,
-                  selectedBrushSize: _selectedBrushSize,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: DrawingCanvasWidget(
+                      canvasId: widget.canvasId,
+                      selectedColor: _selectedColor,
+                      selectedBrushSize: _selectedBrushSize,
+                      repaintBoundaryKey: _repaintBoundaryKey,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -902,6 +963,114 @@ class _ShareBottomSheetState extends State<_ShareBottomSheet> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Dialog that shows export progress with live status updates.
+///
+/// This dialog displays the export progress and status message as the
+/// canvas is being exported to PNG and uploaded to Firebase Storage.
+class _ExportProgressDialog extends ConsumerStatefulWidget {
+  const _ExportProgressDialog({
+    required this.canvasId,
+    required this.repaintBoundaryKey,
+  });
+
+  final String canvasId;
+  final GlobalKey repaintBoundaryKey;
+
+  @override
+  ConsumerState<_ExportProgressDialog> createState() =>
+      _ExportProgressDialogState();
+}
+
+class _ExportProgressDialogState
+    extends ConsumerState<_ExportProgressDialog> {
+  @override
+  void initState() {
+    super.initState();
+    // Start export immediately when dialog opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startExport();
+    });
+  }
+
+  Future<void> _startExport() async {
+    try {
+      await ref
+          .read(canvasExportProvider(widget.canvasId).notifier)
+          .exportCanvas(widget.repaintBoundaryKey);
+
+      // Export successful
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      // Export failed
+      if (mounted) {
+        Navigator.pop(context, false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final exportState = ref.watch(canvasExportProvider(widget.canvasId));
+
+    return PopScope(
+      canPop: false, // Prevent dismissing during export
+      child: AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              Icons.cloud_upload,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(width: 12),
+            const Text('Exporting Canvas'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Progress indicator
+            SizedBox(
+              width: 200,
+              child: LinearProgressIndicator(
+                value: exportState.isExporting ? exportState.progress : null,
+                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  theme.colorScheme.primary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Status message
+            Text(
+              exportState.status,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+
+            // Progress percentage
+            if (exportState.isExporting) ...[
+              const SizedBox(height: 8),
+              Text(
+                '${(exportState.progress * 100).toInt()}%',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

@@ -18,11 +18,14 @@ class DrawingCanvasWidget extends ConsumerStatefulWidget {
   /// - [canvasId]: The ID of the canvas to draw on
   /// - [selectedColor]: The color to use for new strokes
   /// - [selectedBrushSize]: The brush size to use for new strokes
+  /// - [repaintBoundaryKey]: Optional GlobalKey for the RepaintBoundary
+  ///   (used for exporting the canvas to an image)
   const DrawingCanvasWidget({
     super.key,
     required this.canvasId,
     required this.selectedColor,
     required this.selectedBrushSize,
+    this.repaintBoundaryKey,
   });
 
   /// The ID of the canvas to draw on.
@@ -33,6 +36,12 @@ class DrawingCanvasWidget extends ConsumerStatefulWidget {
 
   /// The brush size to use for drawing new strokes.
   final double selectedBrushSize;
+
+  /// Optional GlobalKey for the RepaintBoundary.
+  ///
+  /// If provided, this key can be used to capture the canvas as an image
+  /// for export functionality.
+  final GlobalKey? repaintBoundaryKey;
 
   /// The logical size of the canvas (in logical pixels).
   ///
@@ -45,11 +54,18 @@ class DrawingCanvasWidget extends ConsumerStatefulWidget {
 }
 
 class _DrawingCanvasWidgetState extends ConsumerState<DrawingCanvasWidget> {
-  /// Global key for the RepaintBoundary (for future export functionality).
-  final GlobalKey _repaintBoundaryKey = GlobalKey();
+  /// Global key for the RepaintBoundary (for export functionality).
+  /// Uses the provided key from widget, or creates a local one.
+  late final GlobalKey _repaintBoundaryKey;
 
   /// Global key for the canvas container to get its size for coordinate transformation.
   final GlobalKey _canvasKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _repaintBoundaryKey = widget.repaintBoundaryKey ?? GlobalKey();
+  }
 
   @override
   Widget build(BuildContext context) {

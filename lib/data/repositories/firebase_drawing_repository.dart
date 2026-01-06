@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:panci/domain/entities/drawing_data.dart';
 import 'package:panci/domain/entities/drawing_stroke.dart';
@@ -37,8 +38,11 @@ class FirebaseDrawingRepository implements DrawingRepository {
   ///
   /// By default, uses the default Firestore instance. A custom instance
   /// can be provided for testing or multi-project scenarios.
-  FirebaseDrawingRepository({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance {
+  FirebaseDrawingRepository({
+    FirebaseFirestore? firestore,
+    FirebaseStorage? storage,
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _storage = storage ?? FirebaseStorage.instance {
     // Enable offline persistence for better user experience
     _firestore.settings = const Settings(
       persistenceEnabled: true,
@@ -48,6 +52,9 @@ class FirebaseDrawingRepository implements DrawingRepository {
 
   /// The Firestore instance used for data operations.
   final FirebaseFirestore _firestore;
+
+  /// The Firebase Storage instance used for image uploads.
+  final FirebaseStorage _storage;
 
   /// The collection path for canvas documents.
   static const String _canvasesCollection = 'canvases';
@@ -296,6 +303,113 @@ class FirebaseDrawingRepository implements DrawingRepository {
     } catch (e) {
       debugPrint('Error checking canvas existence: $e');
       return false;
+    }
+  }
+
+  @override
+  Future<void> updateCanvasImage(
+    String canvasId,
+    String imageUrl,
+    DateTime lastExported,
+  ) async {
+    try {
+      debugPrint('Updating canvas $canvasId with image URL: $imageUrl');
+
+      final docRef = _getCanvasRef(canvasId);
+
+      await docRef.update({
+        'imageUrl': imageUrl,
+        'lastExported': lastExported.toIso8601String(),
+        'lastUpdated': DateTime.now().toIso8601String(),
+      });
+
+      debugPrint('Successfully updated canvas $canvasId with image metadata');
+    } catch (e, stackTrace) {
+      debugPrint('Error updating canvas image metadata: $e');
+      debugPrint('Stack trace: $stackTrace');
+
+      if (e is FirebaseException) {
+        throw Exception('Failed to update canvas image: ${e.message}');
+      }
+      rethrow;
+    }
+  }
+
+  /// Uploads a PNG image to Firebase Storage.
+  ///
+  /// Uploads the canvas image to the path: canvases/{canvasId}/latest.png
+  /// and returns the download URL.
+  ///
+  /// Parameters:
+  /// - [canvasId]: The unique identifier for the canvas
+  /// - [pngBytes]: The PNG image data to upload
+  ///
+  /// Returns:
+  /// - The download URL for the uploaded image
+  ///
+  /// Throws:
+  /// - Exception if the upload fails
+  Future<String> uploadCanvasImage(
+    String canvasId,
+    Uint8List pngBytes,
+  ) async {
+    try {
+      debugPrint(
+        'Uploading canvas image for $canvasId (${(pngBytes.length / 1024).toStringAsFixed(2)} KB)',
+      );
+
+      // Create storage reference
+      final storageRef = _storage.ref().child('canvases/$canvasId/latest.png');
+
+      // Set metadata for the image
+      final metadata = SettableMetadata(
+        contentType: 'image/png',
+        customMetadata: {
+          'canvasId': canvasId,
+          'uploadedAt': DateTime.now().toIso8601String(),
+        },
+      );
+
+      // Upload the image
+      final uploadTask = storageRef.putData(pngBytes, metadata);
+
+      // Wait for upload to complete
+      final snapshot = await uploadTask;
+
+      // Get the download URL
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+
+      debugPrint('Successfully uploaded canvas image: $downloadUrl');
+
+      return downloadUrl;
+    } catch (e, stackTrace) {
+      debugPrint('Error uploading canvas image: $e');
+      debugPrint('Stack trace: $stackTrace');
+
+      if (e is FirebaseException) {
+        throw Exception('Failed to upload canvas image: ${e.message}');
+      }
+      rethrow;
+    }
+  }
+
+  /// Deletes the canvas image from Firebase Storage.
+  ///
+  /// This is a utility method for cleaning up canvas images.
+  ///
+  /// Parameters:
+  /// - [canvasId]: The unique identifier for the canvas
+  Future<void> deleteCanvasImage(String canvasId) async {
+    try {
+      debugPrint('Deleting canvas image for $canvasId');
+
+      final storageRef = _storage.ref().child('canvases/$canvasId/latest.png');
+      await storageRef.delete();
+
+      debugPrint('Successfully deleted canvas image');
+    } catch (e) {
+      debugPrint('Error deleting canvas image: $e');
+      // Don't throw - image might not exist, which is okay
     }
   }
 }

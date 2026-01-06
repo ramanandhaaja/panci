@@ -138,4 +138,35 @@ abstract class DrawingRepository {
   /// await repository.clearCanvas('canvas-123');
   /// ```
   Future<void> clearCanvas(String canvasId);
+
+  /// Updates the canvas with exported image information.
+  ///
+  /// After a canvas is exported to PNG and uploaded to Firebase Storage,
+  /// this method updates the canvas metadata with the image URL and
+  /// export timestamp.
+  ///
+  /// Parameters:
+  /// - [canvasId]: The unique identifier for the canvas
+  /// - [imageUrl]: The download URL for the exported PNG image
+  /// - [lastExported]: The timestamp when the export occurred
+  ///
+  /// Returns:
+  /// - Completes when the metadata has been successfully updated
+  ///
+  /// Throws:
+  /// - Exception if the update operation fails
+  ///
+  /// Example:
+  /// ```dart
+  /// await repository.updateCanvasImage(
+  ///   'canvas-123',
+  ///   'https://storage.firebase.com/...',
+  ///   DateTime.now(),
+  /// );
+  /// ```
+  Future<void> updateCanvasImage(
+    String canvasId,
+    String imageUrl,
+    DateTime lastExported,
+  );
 }

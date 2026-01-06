@@ -28,7 +28,8 @@
       "Bash(/usr/bin/head:*)",
       "Bash(cat:*)",
       "Bash(tee:*)",
-      "Bash(/usr/bin/tail:*)"
+      "Bash(/usr/bin/tail:*)",
+      "Bash(openspec show:*)"
     ]
   }
 }

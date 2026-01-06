@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../domain/entities/canvas_entity.dart';
 import 'canvas_painters.dart';
 import 'drawing_preview_painter.dart';
@@ -50,28 +51,44 @@ class ActiveCanvasCard extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
 
-            // Canvas preview
+            // Canvas preview - square aspect ratio
             GestureDetector(
               onTap: onOpen,
-              child: Container(
-                height: 200,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: theme.colorScheme.outline.withValues(alpha: 0.5),
+              child: AspectRatio(
+                aspectRatio: 1.0, // Square (1:1)
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: theme.colorScheme.outline.withValues(alpha: 0.5),
+                    ),
                   ),
-                ),
                 child: Stack(
                   children: [
-                    // Canvas content - use real drawing data or fallback to dummy
+                    // Canvas content - use image if available, fallback to live rendering
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: drawingDataAsync.when(
-                        data: (drawingData) => CustomPaint(
-                          size: Size.infinite,
-                          painter: DrawingPreviewPainter(drawingData: drawingData),
-                        ),
+                        data: (drawingData) => drawingData.imageUrl != null
+                            ? CachedNetworkImage(
+                                imageUrl: drawingData.imageUrl!,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                placeholder: (context, url) => CustomPaint(
+                                  size: Size.infinite,
+                                  painter: DrawingPreviewPainter(drawingData: drawingData),
+                                ),
+                                errorWidget: (context, url, error) => CustomPaint(
+                                  size: Size.infinite,
+                                  painter: DrawingPreviewPainter(drawingData: drawingData),
+                                ),
+                              )
+                            : CustomPaint(
+                                size: Size.infinite,
+                                painter: DrawingPreviewPainter(drawingData: drawingData),
+                              ),
                         loading: () => Center(
                           child: SizedBox(
                             width: 24,
@@ -123,6 +140,7 @@ class ActiveCanvasCard extends ConsumerWidget {
                         ),
                       ),
                   ],
+                ),
                 ),
               ),
             ),
@@ -266,9 +284,22 @@ class RecentCanvasCard extends ConsumerWidget {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: drawingDataAsync.when(
-                    data: (drawingData) => CustomPaint(
-                      painter: DrawingPreviewPainter(drawingData: drawingData),
-                    ),
+                    data: (drawingData) => drawingData.imageUrl != null
+                        ? CachedNetworkImage(
+                            imageUrl: drawingData.imageUrl!,
+                            fit: BoxFit.cover,
+                            width: 80,
+                            height: 80,
+                            placeholder: (context, url) => CustomPaint(
+                              painter: DrawingPreviewPainter(drawingData: drawingData),
+                            ),
+                            errorWidget: (context, url, error) => CustomPaint(
+                              painter: DrawingPreviewPainter(drawingData: drawingData),
+                            ),
+                          )
+                        : CustomPaint(
+                            painter: DrawingPreviewPainter(drawingData: drawingData),
+                          ),
                     loading: () => Center(
                       child: SizedBox(
                         width: 16,

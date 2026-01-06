@@ -14,6 +14,8 @@ class DrawingData {
     required this.strokes,
     required this.lastUpdated,
     required this.version,
+    this.imageUrl,
+    this.lastExported,
   });
 
   /// Creates an empty drawing data for a new canvas.
@@ -41,6 +43,17 @@ class DrawingData {
   ///
   /// Useful for conflict resolution in collaborative scenarios.
   final int version;
+
+  /// The download URL for the exported canvas image.
+  ///
+  /// This is the Firebase Storage URL for the latest PNG export of the canvas.
+  /// Will be null if the canvas has never been exported.
+  final String? imageUrl;
+
+  /// When this canvas was last exported to PNG.
+  ///
+  /// Will be null if the canvas has never been exported.
+  final DateTime? lastExported;
 
   /// The number of strokes currently on the canvas.
   int get strokeCount => strokes.length;
@@ -127,12 +140,16 @@ class DrawingData {
     List<DrawingStroke>? strokes,
     DateTime? lastUpdated,
     int? version,
+    String? imageUrl,
+    DateTime? lastExported,
   }) {
     return DrawingData(
       canvasId: canvasId ?? this.canvasId,
       strokes: strokes ?? this.strokes,
       lastUpdated: lastUpdated ?? this.lastUpdated,
       version: version ?? this.version,
+      imageUrl: imageUrl ?? this.imageUrl,
+      lastExported: lastExported ?? this.lastExported,
     );
   }
 
@@ -144,7 +161,9 @@ class DrawingData {
         other.canvasId == canvasId &&
         _listEquals(other.strokes, strokes) &&
         other.lastUpdated == lastUpdated &&
-        other.version == version;
+        other.version == version &&
+        other.imageUrl == imageUrl &&
+        other.lastExported == lastExported;
   }
 
   @override
@@ -154,6 +173,8 @@ class DrawingData {
       Object.hashAll(strokes),
       lastUpdated,
       version,
+      imageUrl,
+      lastExported,
     );
   }
 

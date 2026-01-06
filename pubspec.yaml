@@ -48,6 +48,10 @@ dependencies:
   firebase_storage: ^12.3.6
   firebase_auth: ^5.3.3
 
+  # Image processing and caching
+  image: ^4.3.0
+  cached_network_image: ^3.4.1
+
   # QR code and barcode scanning
   # TODO: Re-enable when pod install network issues are resolved
   # mobile_scanner: ^5.2.3
