@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:panci/data/models/canvas_model.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:panci/presentation/widgets/canvas_cards.dart';
+import 'package:panci/presentation/providers/canvas_list_provider.dart';
 
 /// Home screen for managing canvas sessions.
 ///
@@ -12,18 +13,18 @@ import 'package:panci/presentation/widgets/canvas_cards.dart';
 /// The screen follows clean architecture principles:
 /// - Uses domain entities for business logic
 /// - Displays data through presentation widgets
-/// - Sample data is provided by the data layer
-class HomeScreen extends StatelessWidget {
+/// - Fetches real canvas data from Firebase via providers
+class HomeScreen extends ConsumerWidget {
   /// Creates a home screen.
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
 
-    // Get sample data from data layer
-    final mostRecentCanvas = SampleCanvasData.getMostRecentCanvas();
-    final recentCanvases = SampleCanvasData.getRecentCanvases();
+    // Get real canvas data from Firebase via providers
+    final mostRecentCanvas = ref.watch(mostRecentCanvasProvider);
+    final recentCanvases = ref.watch(recentCanvasesProvider);
 
     return Scaffold(
       appBar: AppBar(

@@ -14,7 +14,21 @@
       "Bash(pod install)",
       "Bash(pod install:*)",
       "Bash(git config:*)",
-      "Bash(flutter run:*)"
+      "Bash(flutter run:*)",
+      "Bash(timeout 30 flutter build:*)",
+      "Bash(dart analyze:*)",
+      "Bash(flutter --version:*)",
+      "WebSearch",
+      "WebFetch(domain:firebase.google.com)",
+      "Bash(~/.zshrc)",
+      "Bash(source ~/.zshrc)",
+      "Bash($HOME/.pub-cache/bin/flutterfire configure:*)",
+      "Bash(gem install:*)",
+      "Bash(firebase deploy:*)",
+      "Bash(/usr/bin/head:*)",
+      "Bash(cat:*)",
+      "Bash(tee:*)",
+      "Bash(/usr/bin/tail:*)"
     ]
   }
 }

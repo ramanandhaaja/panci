@@ -19,6 +19,7 @@ class CanvasEntity {
   final bool isActive;
 
   /// Type of canvas state (determines visual representation)
+  /// This is used for fallback when drawingData is not available.
   final CanvasState state;
 
   /// Creates a canvas entity.

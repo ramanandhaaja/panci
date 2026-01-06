@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/canvas_entity.dart';
 import 'canvas_painters.dart';
+import 'drawing_preview_painter.dart';
+import '../providers/canvas_preview_provider.dart';
 
 /// Widget that displays the active/featured canvas with full details
-class ActiveCanvasCard extends StatelessWidget {
+class ActiveCanvasCard extends ConsumerWidget {
   /// The canvas to display
   final CanvasEntity canvas;
 
@@ -18,8 +21,9 @@ class ActiveCanvasCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final drawingDataAsync = ref.watch(canvasPreviewStreamProvider(canvas.id));
 
     return Card(
       elevation: 2,
@@ -60,12 +64,28 @@ class ActiveCanvasCard extends StatelessWidget {
                 ),
                 child: Stack(
                   children: [
-                    // Canvas content
+                    // Canvas content - use real drawing data or fallback to dummy
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: CustomPaint(
-                        size: Size.infinite,
-                        painter: CanvasPainterFactory.createPainter(canvas.state),
+                      child: drawingDataAsync.when(
+                        data: (drawingData) => CustomPaint(
+                          size: Size.infinite,
+                          painter: DrawingPreviewPainter(drawingData: drawingData),
+                        ),
+                        loading: () => Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ),
+                        error: (_, __) => CustomPaint(
+                          size: Size.infinite,
+                          painter: CanvasPainterFactory.createPainter(canvas.state),
+                        ),
                       ),
                     ),
 
@@ -204,7 +224,7 @@ class ActiveCanvasCard extends StatelessWidget {
 }
 
 /// Widget that displays a recent canvas in a compact card format
-class RecentCanvasCard extends StatelessWidget {
+class RecentCanvasCard extends ConsumerWidget {
   /// The canvas to display
   final CanvasEntity canvas;
 
@@ -219,8 +239,9 @@ class RecentCanvasCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final drawingDataAsync = ref.watch(canvasPreviewStreamProvider(canvas.id));
 
     return Card(
       elevation: 1,
@@ -231,7 +252,7 @@ class RecentCanvasCard extends StatelessWidget {
           padding: const EdgeInsets.all(12.0),
           child: Row(
             children: [
-              // Canvas preview thumbnail
+              // Canvas preview thumbnail - use real drawing data or fallback
               Container(
                 width: 80,
                 height: 80,
@@ -244,8 +265,23 @@ class RecentCanvasCard extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: CustomPaint(
-                    painter: CanvasPainterFactory.createPainter(canvas.state),
+                  child: drawingDataAsync.when(
+                    data: (drawingData) => CustomPaint(
+                      painter: DrawingPreviewPainter(drawingData: drawingData),
+                    ),
+                    loading: () => Center(
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ),
+                    error: (_, __) => CustomPaint(
+                      painter: CanvasPainterFactory.createPainter(canvas.state),
+                    ),
                   ),
                 ),
               ),

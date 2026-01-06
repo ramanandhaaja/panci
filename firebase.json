@@ -1,0 +1,25 @@
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "ios": {
+        "default": {
+          "projectId": "panci-canvas-2a7dc",
+          "appId": "1:772845694568:ios:b935125403f5d3f93fd5dd",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "panci-canvas-2a7dc",
+          "configurations": {
+            "ios": "1:772845694568:ios:b935125403f5d3f93fd5dd"
+          }
+        }
+      }
+    }
+  }
+}

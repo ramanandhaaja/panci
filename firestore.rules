@@ -1,0 +1,135 @@
+rules_version = '2';
+
+// Firestore Security Rules for Panci Collaborative Canvas App
+//
+// These rules define who can read and write data in the Firestore database.
+// They enforce security while allowing the collaborative features to work.
+//
+// To deploy these rules:
+// 1. Using Firebase Console:
+//    - Go to https://console.firebase.google.com
+//    - Select your project
+//    - Navigate to Firestore Database > Rules
+//    - Copy and paste these rules
+//    - Click "Publish"
+//
+// 2. Using Firebase CLI:
+//    - Install: npm install -g firebase-tools
+//    - Login: firebase login
+//    - Init: firebase init firestore (if not already done)
+//    - Deploy: firebase deploy --only firestore:rules
+//
+// Security Principles:
+// - All users must be authenticated (even anonymously)
+// - Canvas data is publicly readable for collaboration
+// - Only authenticated users can create/modify data
+// - Users can only update their own presence information
+// - Data validation ensures proper structure
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for common validations
+
+    /// Check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    /// Check if the user is the owner of the document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    /// Validate canvas document structure
+    function isValidCanvas() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['canvasId', 'strokes', 'lastUpdated', 'version'])
+        && data.canvasId is string
+        && data.strokes is list
+        && data.strokes.size() <= 1000  // Enforce max strokes limit
+        && data.lastUpdated is string
+        && data.version is int
+        && data.version >= 0;
+    }
+
+    /// Validate stroke structure within canvas
+    function isValidStroke(stroke) {
+      return stroke.keys().hasAll(['id', 'points', 'colorValue', 'strokeWidth', 'timestamp', 'userId'])
+        && stroke.id is string
+        && stroke.points is list
+        && stroke.points.size() > 0
+        && stroke.colorValue is int
+        && stroke.strokeWidth is number
+        && stroke.strokeWidth > 0
+        && stroke.strokeWidth <= 50  // Reasonable max stroke width
+        && stroke.timestamp is string
+        && stroke.userId is string;
+    }
+
+    // Canvas documents - Main drawing data
+    // Path: /canvases/{canvasId}
+    match /canvases/{canvasId} {
+
+      // Anyone can read canvas data to enable collaboration
+      // This allows users to join and view any canvas by ID
+      allow read: if true;
+
+      // Only authenticated users can create new canvases
+      allow create: if isAuthenticated()
+        && isValidCanvas();
+
+      // Only authenticated users can update canvases
+      // Validates data structure to prevent malformed data
+      allow update: if isAuthenticated()
+        && isValidCanvas();
+
+      // Only authenticated users can delete canvases
+      // In production, you might want to restrict this to canvas owners only
+      allow delete: if isAuthenticated();
+
+      // Active users subcollection - For user presence (Phase 7)
+      // Path: /canvases/{canvasId}/active_users/{userId}
+      match /active_users/{userId} {
+
+        // Anyone can read active users to see who's online
+        allow read: if true;
+
+        // Users can only create/update their own presence document
+        allow create, update: if isOwner(userId)
+          && request.resource.data.keys().hasAll(['userId', 'name', 'cursorPosition', 'lastSeen'])
+          && request.resource.data.userId == userId;
+
+        // Users can only delete their own presence document
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    // User profiles (for future use)
+    // Path: /users/{userId}
+    match /users/{userId} {
+      // Users can read any profile (for collaboration features)
+      allow read: if isAuthenticated();
+
+      // Users can only write to their own profile
+      allow write: if isOwner(userId);
+    }
+
+    // Canvas metadata (for canvas discovery, future feature)
+    // Path: /canvas_metadata/{canvasId}
+    match /canvas_metadata/{canvasId} {
+      // Anyone can read canvas metadata
+      allow read: if true;
+
+      // Only authenticated users can create/update metadata
+      allow write: if isAuthenticated();
+    }
+
+    // Deny all other paths by default
+    // This ensures security by explicitly denying access to any
+    // collections not defined above
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

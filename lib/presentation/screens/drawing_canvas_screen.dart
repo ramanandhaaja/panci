@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:panci/presentation/widgets/color_picker.dart';
 import 'package:panci/presentation/widgets/brush_size_selector.dart';
+import 'package:panci/presentation/widgets/drawing_canvas_widget.dart';
+import 'package:panci/presentation/providers/drawing_provider.dart';
+import 'package:panci/domain/entities/drawing_data.dart';
 
 /// Screen that displays the drawing canvas and drawing controls.
 ///
@@ -10,7 +14,7 @@ import 'package:panci/presentation/widgets/brush_size_selector.dart';
 /// - Color picker for selecting drawing colors
 /// - Brush size selector for selecting stroke width
 /// - App bar showing the canvas ID and a "Done" button
-class DrawingCanvasScreen extends StatefulWidget {
+class DrawingCanvasScreen extends ConsumerStatefulWidget {
   /// Creates a drawing canvas screen.
   ///
   /// The [canvasId] parameter identifies the shared canvas being drawn on.
@@ -23,15 +27,20 @@ class DrawingCanvasScreen extends StatefulWidget {
   final String canvasId;
 
   @override
-  State<DrawingCanvasScreen> createState() => _DrawingCanvasScreenState();
+  ConsumerState<DrawingCanvasScreen> createState() => _DrawingCanvasScreenState();
 }
 
-class _DrawingCanvasScreenState extends State<DrawingCanvasScreen> {
+class _DrawingCanvasScreenState extends ConsumerState<DrawingCanvasScreen> {
   // Current drawing color
   Color _selectedColor = Colors.black;
 
   // Current brush size
   double _selectedBrushSize = 4.0;
+
+  // Connection status indicator
+  // Note: In a production app, you would monitor the actual Firestore
+  // connection state. For now, we assume online if no errors occur.
+  bool _isOnline = true;
 
   /// Handles the color selection change.
   void _onColorSelected(Color color) {
@@ -45,6 +54,46 @@ class _DrawingCanvasScreenState extends State<DrawingCanvasScreen> {
     setState(() {
       _selectedBrushSize = size;
     });
+  }
+
+  /// Handles the undo button tap.
+  void _onUndoPressed() {
+    ref.read(drawingProvider(widget.canvasId).notifier).undo();
+  }
+
+  /// Handles the redo button tap.
+  void _onRedoPressed() {
+    ref.read(drawingProvider(widget.canvasId).notifier).redo();
+  }
+
+  /// Handles the clear button tap.
+  Future<void> _onClearPressed() async {
+    final shouldClear = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear Canvas?'),
+        content: const Text(
+          'This will remove all strokes from the canvas. This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldClear == true && mounted) {
+      ref.read(drawingProvider(widget.canvasId).notifier).clear();
+    }
   }
 
   /// Handles the "Done" button tap.
@@ -92,22 +141,57 @@ class _DrawingCanvasScreenState extends State<DrawingCanvasScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final drawingState = ref.watch(drawingProvider(widget.canvasId));
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Drawing Canvas'),
-            Text(
-              widget.canvasId,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+        title: const Text('Canvas'),
+        leading: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: _isOnline ? Colors.green : Colors.grey,
             ),
-          ],
+          ),
         ),
         actions: [
+          // Undo button
+          IconButton(
+            onPressed: drawingState.canUndo ? _onUndoPressed : null,
+            icon: const Icon(Icons.undo),
+            tooltip: 'Undo',
+          ),
+          // Redo button
+          IconButton(
+            onPressed: drawingState.canRedo ? _onRedoPressed : null,
+            icon: const Icon(Icons.redo),
+            tooltip: 'Redo',
+          ),
+          // More options menu
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'clear') {
+                _onClearPressed();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'clear',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline),
+                    SizedBox(width: 8),
+                    Text('Clear Canvas'),
+                  ],
+                ),
+              ),
+            ],
+            tooltip: 'More options',
+          ),
+          const SizedBox(width: 8),
           // Share button
           IconButton(
             onPressed: _onSharePressed,
@@ -129,7 +213,78 @@ class _DrawingCanvasScreenState extends State<DrawingCanvasScreen> {
       ),
       body: Column(
         children: [
-          // Drawing canvas container (placeholder)
+          // Stroke count indicator and warning banner
+          Builder(
+            builder: (context) {
+              final strokeCount = drawingState.strokeCount;
+              const maxStrokes = DrawingData.maxStrokes;
+              final percentage = drawingState.strokeLimitPercentage;
+              final showWarning = strokeCount >= 900;
+
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Stroke counter
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    color: showWarning
+                        ? theme.colorScheme.errorContainer
+                        : theme.colorScheme.surfaceContainerHighest,
+                    child: Row(
+                      children: [
+                        Icon(
+                          showWarning ? Icons.warning : Icons.edit,
+                          size: 16,
+                          color: showWarning
+                              ? theme.colorScheme.onErrorContainer
+                              : theme.colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '$strokeCount/$maxStrokes strokes',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: showWarning
+                                ? theme.colorScheme.onErrorContainer
+                                : theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: LinearProgressIndicator(
+                            value: percentage,
+                            backgroundColor: showWarning
+                                ? theme.colorScheme.errorContainer
+                                : theme.colorScheme.surfaceContainerHigh,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              showWarning
+                                  ? theme.colorScheme.error
+                                  : theme.colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                        if (showWarning) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            'Approaching limit!',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.onErrorContainer,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+
+          // Drawing canvas container
           Expanded(
             child: Container(
               margin: const EdgeInsets.all(16),
@@ -150,39 +305,10 @@ class _DrawingCanvasScreenState extends State<DrawingCanvasScreen> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: Stack(
-                  children: [
-                    // Canvas drawing area (placeholder)
-                    Container(
-                      color: Colors.white,
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.touch_app,
-                              size: 64,
-                              color: theme.colorScheme.outline,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Drawing canvas will be here',
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Touch and drag to draw',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                child: DrawingCanvasWidget(
+                  canvasId: widget.canvasId,
+                  selectedColor: _selectedColor,
+                  selectedBrushSize: _selectedBrushSize,
                 ),
               ),
             ),
