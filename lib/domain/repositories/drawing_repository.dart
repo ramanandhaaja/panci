@@ -169,4 +169,91 @@ abstract class DrawingRepository {
     String imageUrl,
     DateTime lastExported,
   );
+
+  /// Checks if a user has access to a canvas.
+  ///
+  /// Verifies that the user is either:
+  /// - The owner of the canvas, OR
+  /// - A team member with access, OR
+  /// - Viewing a public canvas
+  ///
+  /// This method should be called before allowing any canvas operations
+  /// to ensure proper access control.
+  ///
+  /// Parameters:
+  /// - [canvasId]: The unique identifier for the canvas
+  /// - [userId]: The Firebase Auth UID of the user
+  ///
+  /// Returns:
+  /// - true if the user has access to the canvas
+  /// - false if the user does not have access
+  ///
+  /// Throws:
+  /// - Exception if there's a network or permission error
+  ///
+  /// Example:
+  /// ```dart
+  /// final hasAccess = await repository.checkCanvasAccess(
+  ///   'canvas-123',
+  ///   'user-456',
+  /// );
+  /// if (!hasAccess) {
+  ///   throw Exception('Access denied');
+  /// }
+  /// ```
+  Future<bool> checkCanvasAccess(String canvasId, String userId);
+
+  /// Adds a team member to a canvas.
+  ///
+  /// Grants a user access to collaborate on the canvas. Only the canvas
+  /// owner can add team members. Team members can view and edit the canvas
+  /// but cannot add/remove other members or delete the canvas.
+  ///
+  /// The operation is idempotent - adding an existing team member
+  /// will complete successfully without error.
+  ///
+  /// Parameters:
+  /// - [canvasId]: The unique identifier for the canvas
+  /// - [userId]: The Firebase Auth UID of the user to add
+  ///
+  /// Returns:
+  /// - Completes when the team member has been successfully added
+  ///
+  /// Throws:
+  /// - Exception if the canvas doesn't exist
+  /// - Exception if there's a network or permission error
+  ///
+  /// Example:
+  /// ```dart
+  /// await repository.addTeamMember('canvas-123', 'user-456');
+  /// ```
+  Future<void> addTeamMember(String canvasId, String userId);
+
+  /// Removes a team member from a canvas.
+  ///
+  /// Revokes a user's access to collaborate on the canvas. Only the canvas
+  /// owner can remove team members.
+  ///
+  /// The operation is idempotent - removing a non-existent team member
+  /// will complete successfully without error.
+  ///
+  /// Note: The canvas owner cannot be removed from their own canvas.
+  ///
+  /// Parameters:
+  /// - [canvasId]: The unique identifier for the canvas
+  /// - [userId]: The Firebase Auth UID of the user to remove
+  ///
+  /// Returns:
+  /// - Completes when the team member has been successfully removed
+  ///
+  /// Throws:
+  /// - Exception if the canvas doesn't exist
+  /// - Exception if attempting to remove the owner
+  /// - Exception if there's a network or permission error
+  ///
+  /// Example:
+  /// ```dart
+  /// await repository.removeTeamMember('canvas-123', 'user-456');
+  /// ```
+  Future<void> removeTeamMember(String canvasId, String userId);
 }

@@ -7,16 +7,19 @@ service firebase.storage {
 
     // Canvas images - stored at canvases/{canvasId}/latest.png
     match /canvases/{canvasId}/{fileName} {
-      // Allow authenticated users to read canvas images
-      allow read: if request.auth != null;
+      // Public read for widget access
+      // Allows canvas images to be displayed in iOS/Android widgets
+      allow read: if true;
 
-      // Allow authenticated users to upload/update canvas images
+      // Only authenticated users can upload/update canvas images
       // Only PNG files under 5MB are allowed
+      // Note: We can't check canvas ownership here without another Firestore read
+      // Trust the application layer to check permissions before upload
       allow write: if request.auth != null
                    && request.resource.size < 5 * 1024 * 1024
                    && request.resource.contentType == 'image/png';
 
-      // Allow authenticated users to delete canvas images
+      // Only authenticated users can delete canvas images
       allow delete: if request.auth != null;
     }
   }

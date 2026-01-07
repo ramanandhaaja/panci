@@ -15,6 +15,9 @@ class DrawingDataModel {
     required this.strokes,
     required this.lastUpdated,
     required this.version,
+    required this.ownerId,
+    this.teamMembers = const [],
+    this.isPrivate = true,
     this.imageUrl,
     this.lastExported,
   });
@@ -37,6 +40,9 @@ class DrawingDataModel {
   ///   ],
   ///   "lastUpdated": "2025-01-01T12:00:00.000Z",
   ///   "version": 1,
+  ///   "ownerId": "user-uuid",
+  ///   "teamMembers": ["user-uuid-2", "user-uuid-3"],
+  ///   "isPrivate": true,
   ///   "imageUrl": "https://storage.firebase.com/...",
   ///   "lastExported": "2025-01-01T12:30:00.000Z"
   /// }
@@ -49,6 +55,13 @@ class DrawingDataModel {
           .toList(),
       lastUpdated: json['lastUpdated'] as String,
       version: json['version'] as int,
+      ownerId: json['ownerId'] as String,
+      teamMembers: json['teamMembers'] != null
+          ? (json['teamMembers'] as List<dynamic>)
+              .map((member) => member as String)
+              .toList()
+          : const [],
+      isPrivate: json['isPrivate'] as bool? ?? true,
       imageUrl: json['imageUrl'] as String?,
       lastExported: json['lastExported'] as String?,
     );
@@ -65,6 +78,9 @@ class DrawingDataModel {
           .toList(),
       lastUpdated: entity.lastUpdated.toIso8601String(),
       version: entity.version,
+      ownerId: entity.ownerId,
+      teamMembers: entity.teamMembers,
+      isPrivate: entity.isPrivate,
       imageUrl: entity.imageUrl,
       lastExported: entity.lastExported?.toIso8601String(),
     );
@@ -87,6 +103,19 @@ class DrawingDataModel {
   /// Version number for this drawing, incremented with each modification.
   final int version;
 
+  /// The user ID of the canvas creator/owner.
+  final String ownerId;
+
+  /// List of user IDs who have access to this canvas.
+  ///
+  /// Defaults to an empty list if not provided.
+  final List<String> teamMembers;
+
+  /// Whether this canvas is private.
+  ///
+  /// Defaults to true if not provided.
+  final bool isPrivate;
+
   /// The download URL for the exported canvas image.
   ///
   /// Will be null if the canvas has never been exported.
@@ -107,6 +136,9 @@ class DrawingDataModel {
       'strokes': strokes,
       'lastUpdated': lastUpdated,
       'version': version,
+      'ownerId': ownerId,
+      'teamMembers': teamMembers,
+      'isPrivate': isPrivate,
     };
 
     if (imageUrl != null) {
@@ -132,6 +164,9 @@ class DrawingDataModel {
           .toList(),
       lastUpdated: DateTime.parse(lastUpdated),
       version: version,
+      ownerId: ownerId,
+      teamMembers: teamMembers,
+      isPrivate: isPrivate,
       imageUrl: imageUrl,
       lastExported: lastExported != null ? DateTime.parse(lastExported!) : null,
     );
@@ -146,6 +181,9 @@ class DrawingDataModel {
         _listEquals(other.strokes, strokes) &&
         other.lastUpdated == lastUpdated &&
         other.version == version &&
+        other.ownerId == ownerId &&
+        _listEqualsString(other.teamMembers, teamMembers) &&
+        other.isPrivate == isPrivate &&
         other.imageUrl == imageUrl &&
         other.lastExported == lastExported;
   }
@@ -157,6 +195,9 @@ class DrawingDataModel {
       Object.hashAll(strokes),
       lastUpdated,
       version,
+      ownerId,
+      Object.hashAll(teamMembers),
+      isPrivate,
       imageUrl,
       lastExported,
     );
@@ -165,7 +206,8 @@ class DrawingDataModel {
   @override
   String toString() {
     return 'DrawingDataModel(canvasId: $canvasId, strokeCount: ${strokes.length}, '
-        'lastUpdated: $lastUpdated, version: $version)';
+        'lastUpdated: $lastUpdated, version: $version, ownerId: $ownerId, '
+        'teamMembers: ${teamMembers.length}, isPrivate: $isPrivate)';
   }
 
   /// Helper method to compare lists of stroke JSON maps.
@@ -176,6 +218,15 @@ class DrawingDataModel {
     if (a.length != b.length) return false;
     for (int i = 0; i < a.length; i++) {
       if (!_mapEquals(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  /// Helper method to compare lists of strings.
+  bool _listEqualsString(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
     }
     return true;
   }

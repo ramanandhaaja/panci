@@ -41,11 +41,39 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    /// Check if user is owner or in team members array for a canvas
+    function isOwnerOrTeamMember(canvasId) {
+      let canvas = get(/databases/$(database)/documents/canvases/$(canvasId));
+      return request.auth.uid == canvas.data.ownerId ||
+             request.auth.uid in canvas.data.teamMembers;
+    }
+
+    /// Check if user is the canvas owner
+    function isCanvasOwner(canvasId) {
+      let canvas = get(/databases/$(database)/documents/canvases/$(canvasId));
+      return request.auth.uid == canvas.data.ownerId;
+    }
+
+    /// Check if user is a guest (by checking their user profile)
+    function isGuest() {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return user.data.isGuest == true;
+    }
+
+    /// Get user's canvas count
+    function getUserCanvasCount() {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return user.data.canvasCount;
+    }
+
     /// Validate canvas document structure
     function isValidCanvas() {
       let data = request.resource.data;
-      return data.keys().hasAll(['canvasId', 'strokes', 'lastUpdated', 'version'])
+      return data.keys().hasAll(['canvasId', 'ownerId', 'teamMembers', 'isPrivate', 'strokes', 'lastUpdated', 'version'])
         && data.canvasId is string
+        && data.ownerId is string
+        && data.teamMembers is list
+        && data.isPrivate is bool
         && data.strokes is list
         && data.strokes.size() <= 1000  // Enforce max strokes limit
         && data.lastUpdated is string
@@ -71,22 +99,25 @@ service cloud.firestore {
     // Path: /canvases/{canvasId}
     match /canvases/{canvasId} {
 
-      // Anyone can read canvas data to enable collaboration
-      // This allows users to join and view any canvas by ID
-      allow read: if true;
+      // Private canvases: only owner and team members can read
+      // Public canvases: anyone can read
+      allow read: if isAuthenticated() && isOwnerOrTeamMember(canvasId);
 
-      // Only authenticated users can create new canvases
+      // Only authenticated users can create canvases
+      // Guests can only create if canvasCount < 1 (limited to 1 canvas)
+      // Must set ownerId to the authenticated user
       allow create: if isAuthenticated()
-        && isValidCanvas();
+        && request.resource.data.ownerId == request.auth.uid
+        && isValidCanvas()
+        && (!isGuest() || getUserCanvasCount() < 1);
 
-      // Only authenticated users can update canvases
-      // Validates data structure to prevent malformed data
+      // Only owner and team members can update
       allow update: if isAuthenticated()
+        && isOwnerOrTeamMember(canvasId)
         && isValidCanvas();
 
-      // Only authenticated users can delete canvases
-      // In production, you might want to restrict this to canvas owners only
-      allow delete: if isAuthenticated();
+      // Only owner can delete
+      allow delete: if isAuthenticated() && isCanvasOwner(canvasId);
 
       // Active users subcollection - For user presence (Phase 7)
       // Path: /canvases/{canvasId}/active_users/{userId}
@@ -105,14 +136,21 @@ service cloud.firestore {
       }
     }
 
-    // User profiles (for future use)
+    // User profiles
     // Path: /users/{userId}
     match /users/{userId} {
-      // Users can read any profile (for collaboration features)
+      // Any authenticated user can read profiles (for team member info)
       allow read: if isAuthenticated();
 
-      // Users can only write to their own profile
-      allow write: if isOwner(userId);
+      // Users can only create/update their own profile
+      // Must include all required fields
+      allow create, update: if isAuthenticated()
+        && request.auth.uid == userId
+        && request.resource.data.userId == userId
+        && request.resource.data.keys().hasAll(['userId', 'username', 'email', 'canvasCount', 'isGuest', 'createdAt', 'updatedAt']);
+
+      // Users can only delete their own profile
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
     }
 
     // Canvas metadata (for canvas discovery, future feature)

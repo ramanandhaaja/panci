@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:panci/presentation/widgets/color_picker.dart';
 import 'package:panci/presentation/widgets/brush_size_selector.dart';
 import 'package:panci/presentation/widgets/drawing_canvas_widget.dart';
 import 'package:panci/presentation/providers/drawing_provider.dart';
 import 'package:panci/presentation/providers/canvas_export_provider.dart';
+import 'package:panci/presentation/providers/auth_provider.dart';
+import 'package:panci/presentation/providers/user_provider.dart';
+import 'package:panci/presentation/widgets/registration_prompt_dialog.dart';
 import 'package:panci/domain/entities/drawing_data.dart';
+import 'package:panci/presentation/screens/team/team_management_screen.dart';
+import 'package:panci/data/repositories/repository_provider.dart';
 
 /// Screen that displays the drawing canvas and drawing controls.
 ///
@@ -41,10 +47,86 @@ class _DrawingCanvasScreenState extends ConsumerState<DrawingCanvasScreen> {
   // Connection status indicator
   // Note: In a production app, you would monitor the actual Firestore
   // connection state. For now, we assume online if no errors occur.
-  bool _isOnline = true;
+  final bool _isOnline = true;
 
   // Global key for RepaintBoundary (for canvas export)
   final GlobalKey _repaintBoundaryKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    // Check access when screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAccessAndLoad();
+    });
+  }
+
+  /// Checks if the current user has access to this canvas.
+  ///
+  /// If the user doesn't have access, shows an error dialog and navigates back.
+  Future<void> _checkAccessAndLoad() async {
+    final authState = ref.read(authProvider);
+    final userId = authState.userId;
+
+    if (userId == null) {
+      debugPrint('No userId available for access check');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Authentication required')),
+        );
+        Navigator.pop(context);
+      }
+      return;
+    }
+
+    try {
+      final repository = ref.read(drawingRepositoryProvider);
+      final hasAccess = await repository.checkCanvasAccess(
+        widget.canvasId,
+        userId,
+      );
+
+      debugPrint(
+        'Canvas access check: canvas=${widget.canvasId}, user=$userId, hasAccess=$hasAccess',
+      );
+
+      if (!hasAccess) {
+        if (mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: const Text('Access Denied'),
+              content: const Text(
+                "You don't have permission to access this canvas. "
+                "Only the canvas owner and team members can view and edit it.",
+              ),
+              actions: [
+                FilledButton(
+                  onPressed: () {
+                    Navigator.pop(context); // Close dialog
+                    Navigator.pop(context); // Close screen
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error checking canvas access: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error checking access: ${e.toString()}'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+        Navigator.pop(context);
+      }
+    }
+  }
 
   /// Handles the color selection change.
   void _onColorSelected(Color color) {
@@ -105,14 +187,30 @@ class _DrawingCanvasScreenState extends ConsumerState<DrawingCanvasScreen> {
   /// Simply closes the canvas and returns to the home page.
   /// Strokes are already auto-saved to Firestore via real-time sync.
   void _onDonePressed() {
-    Navigator.pop(context);
+    // Navigate back to home screen
+    Navigator.popUntil(context, (route) => route.isFirst);
   }
 
   /// Handles the "Publish" button tap.
   ///
   /// Shows a confirmation dialog, then generates a PNG image,
   /// uploads to Firebase Storage, and navigates back if confirmed.
+  /// For guests, shows registration prompt instead.
   Future<void> _onPublishPressed() async {
+    final user = ref.read(userProvider);
+    final isGuest = user?.isGuest ?? true;
+
+    // If user is a guest, show registration prompt
+    if (isGuest) {
+      await showRegistrationPrompt(
+        context,
+        title: 'Registration Required',
+        message:
+            'Register an account to publish your canvas and share it with others.',
+      );
+      return;
+    }
+
     final shouldPublish = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -148,8 +246,25 @@ class _DrawingCanvasScreenState extends ConsumerState<DrawingCanvasScreen> {
 
       if (mounted) {
         if (exportSuccess == true) {
-          // Export successful, navigate back
-          Navigator.pop(context);
+          // Export successful, navigate back to home screen
+          Navigator.popUntil(context, (route) => route.isFirst);
+
+          // Show success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text('Canvas published successfully!'),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
         } else {
           // Export failed, show error and stay on screen
           ScaffoldMessenger.of(context).showSnackBar(
@@ -188,10 +303,43 @@ class _DrawingCanvasScreenState extends ConsumerState<DrawingCanvasScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final drawingState = ref.watch(drawingProvider(widget.canvasId));
+    final authState = ref.watch(authProvider);
+    final currentUserId = authState.userId ?? '';
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Canvas'),
+        title: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('canvases')
+              .doc(widget.canvasId)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Text('Canvas');
+            }
+
+            final canvasData = snapshot.data!.data() as Map<String, dynamic>?;
+            final ownerId = canvasData?['ownerId'] as String? ?? '';
+            final teamMembers = List<String>.from(
+              canvasData?['teamMembers'] as List<dynamic>? ?? [],
+            );
+            final teamMemberCount = teamMembers.length;
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Canvas'),
+                if (currentUserId == ownerId && teamMemberCount > 0)
+                  Text(
+                    '$teamMemberCount ${teamMemberCount == 1 ? 'collaborator' : 'collaborators'}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
         leading: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Container(
@@ -204,66 +352,61 @@ class _DrawingCanvasScreenState extends ConsumerState<DrawingCanvasScreen> {
           ),
         ),
         actions: [
-          // Undo button
-          IconButton(
-            onPressed: drawingState.canUndo ? _onUndoPressed : null,
-            icon: const Icon(Icons.undo),
-            tooltip: 'Undo',
-          ),
-          // Redo button
-          IconButton(
-            onPressed: drawingState.canRedo ? _onRedoPressed : null,
-            icon: const Icon(Icons.redo),
-            tooltip: 'Redo',
-          ),
-          // More options menu
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'clear') {
-                _onClearPressed();
+          // Team management button (only visible to owner)
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('canvases')
+                .doc(widget.canvasId)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const SizedBox.shrink();
               }
+
+              final canvasData = snapshot.data!.data() as Map<String, dynamic>?;
+              final ownerId = canvasData?['ownerId'] as String? ?? '';
+              final isOwner = currentUserId == ownerId;
+              final canvasName = canvasData?['name'] as String? ?? 'Canvas';
+
+              if (!isOwner) {
+                return const SizedBox.shrink();
+              }
+
+              return IconButton(
+                icon: const Icon(Icons.people),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => TeamManagementScreen(
+                        canvasId: widget.canvasId,
+                        canvasName: canvasName,
+                      ),
+                    ),
+                  );
+                },
+                tooltip: 'Manage team',
+              );
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'clear',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete_outline),
-                    SizedBox(width: 8),
-                    Text('Clear Canvas'),
-                  ],
-                ),
-              ),
-            ],
-            tooltip: 'More options',
           ),
-          const SizedBox(width: 8),
           // Share button
           IconButton(
             onPressed: _onSharePressed,
             icon: const Icon(Icons.share),
             tooltip: 'Share canvas',
           ),
-          const SizedBox(width: 8),
-          // Publish button (generates image)
-          TextButton.icon(
+          // Publish button
+          IconButton(
             onPressed: _onPublishPressed,
             icon: const Icon(Icons.publish),
-            label: const Text('Publish'),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-            ),
+            tooltip: 'Publish image',
           ),
-          const SizedBox(width: 4),
-          // Done button (just closes)
-          FilledButton(
+          // Done button
+          IconButton(
             onPressed: _onDonePressed,
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-            ),
-            child: const Text('Done'),
+            icon: const Icon(Icons.check),
+            tooltip: 'Done',
           ),
-          const SizedBox(width: 8),
         ],
       ),
       body: Column(
@@ -393,6 +536,53 @@ class _DrawingCanvasScreenState extends ConsumerState<DrawingCanvasScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const SizedBox(height: 8),
+
+                  // Undo/Redo/Clear buttons row
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        // Undo button
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: drawingState.canUndo ? _onUndoPressed : null,
+                            icon: const Icon(Icons.undo, size: 18),
+                            label: const Text('Undo'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Redo button
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: drawingState.canRedo ? _onRedoPressed : null,
+                            icon: const Icon(Icons.redo, size: 18),
+                            label: const Text('Redo'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Clear button
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _onClearPressed,
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            label: const Text('Clear'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              foregroundColor: theme.colorScheme.error,
+                              side: BorderSide(color: theme.colorScheme.error.withValues(alpha: 0.5)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
 
                   // Section title: Color
                   Padding(

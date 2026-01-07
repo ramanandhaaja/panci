@@ -71,17 +71,23 @@ class FirebaseDrawingRepository implements DrawingRepository {
 
       final docSnapshot = await _getCanvasRef(canvasId).get();
 
-      // If the document doesn't exist, return an empty canvas
+      // If the document doesn't exist, throw an exception
+      // This is different from the previous behavior to enforce proper canvas creation
       if (!docSnapshot.exists) {
-        debugPrint('Canvas $canvasId does not exist, returning empty canvas');
-        return DrawingData.empty(canvasId);
+        debugPrint('Canvas $canvasId does not exist');
+        throw Exception(
+          'Canvas $canvasId not found. '
+          'Canvas must be created with an owner before loading.',
+        );
       }
 
       // Get the document data
       final data = docSnapshot.data();
       if (data == null) {
-        debugPrint('Canvas $canvasId has null data, returning empty canvas');
-        return DrawingData.empty(canvasId);
+        debugPrint('Canvas $canvasId has null data');
+        throw Exception(
+          'Canvas $canvasId has null data. The document exists but contains no data.',
+        );
       }
 
       // Convert from Firestore JSON to domain entity
@@ -89,7 +95,9 @@ class FirebaseDrawingRepository implements DrawingRepository {
       final entity = model.toEntity();
 
       debugPrint(
-        'Loaded canvas $canvasId: ${entity.strokeCount} strokes, version ${entity.version}',
+        'Loaded canvas $canvasId: ${entity.strokeCount} strokes, version ${entity.version}, '
+        'owner: ${entity.ownerId}, teamMembers: ${entity.teamMembers.length}, '
+        'isPrivate: ${entity.isPrivate}',
       );
 
       return entity;
@@ -97,15 +105,10 @@ class FirebaseDrawingRepository implements DrawingRepository {
       debugPrint('Error loading canvas $canvasId: $e');
       debugPrint('Stack trace: $stackTrace');
 
-      // For critical errors, propagate the exception
-      // For minor errors (like parsing), return empty canvas
       if (e is FirebaseException) {
         throw Exception('Failed to load canvas: ${e.message}');
       }
-
-      // If it's a parsing error, return empty canvas
-      debugPrint('Returning empty canvas due to error');
-      return DrawingData.empty(canvasId);
+      rethrow;
     }
   }
 
@@ -123,21 +126,21 @@ class FirebaseDrawingRepository implements DrawingRepository {
       await _firestore.runTransaction((transaction) async {
         final snapshot = await transaction.get(docRef);
 
-        // Prepare the update data
-        final updateData = <String, dynamic>{
-          'canvasId': canvasId,
-          'strokes': FieldValue.arrayUnion([strokeJson]),
-          'lastUpdated': DateTime.now().toIso8601String(),
-          'version': FieldValue.increment(1),
-        };
-
         if (snapshot.exists) {
           // Update existing document
+          final updateData = <String, dynamic>{
+            'strokes': FieldValue.arrayUnion([strokeJson]),
+            'lastUpdated': DateTime.now().toIso8601String(),
+            'version': FieldValue.increment(1),
+          };
           transaction.update(docRef, updateData);
         } else {
-          // Create new document
-          updateData['version'] = 1;
-          transaction.set(docRef, updateData);
+          // Canvas doesn't exist - this should not happen
+          // The canvas must be created first with ownership information
+          throw Exception(
+            'Canvas $canvasId does not exist. '
+            'Canvas must be created with createCanvas() before adding strokes.',
+          );
         }
       });
 
@@ -197,17 +200,18 @@ class FirebaseDrawingRepository implements DrawingRepository {
 
     return _getCanvasRef(canvasId).snapshots().map((snapshot) {
       try {
-        // If the document doesn't exist, return an empty canvas
+        // If the document doesn't exist, throw an error
+        // This is consistent with the loadCanvas behavior
         if (!snapshot.exists) {
-          debugPrint('Canvas $canvasId does not exist in watch, returning empty');
-          return DrawingData.empty(canvasId);
+          debugPrint('Canvas $canvasId does not exist in watch');
+          throw Exception('Canvas $canvasId not found in watch stream');
         }
 
         // Get the document data
         final data = snapshot.data();
         if (data == null) {
-          debugPrint('Canvas $canvasId has null data in watch, returning empty');
-          return DrawingData.empty(canvasId);
+          debugPrint('Canvas $canvasId has null data in watch');
+          throw Exception('Canvas $canvasId has null data in watch stream');
         }
 
         // Convert from Firestore JSON to domain entity
@@ -215,7 +219,8 @@ class FirebaseDrawingRepository implements DrawingRepository {
         final entity = model.toEntity();
 
         debugPrint(
-          'Canvas $canvasId updated: ${entity.strokeCount} strokes, version ${entity.version}',
+          'Canvas $canvasId updated: ${entity.strokeCount} strokes, version ${entity.version}, '
+          'owner: ${entity.ownerId}, teamMembers: ${entity.teamMembers.length}',
         );
 
         return entity;
@@ -223,8 +228,8 @@ class FirebaseDrawingRepository implements DrawingRepository {
         debugPrint('Error in canvas watch stream: $e');
         debugPrint('Stack trace: $stackTrace');
 
-        // Return empty canvas on error to keep the stream alive
-        return DrawingData.empty(canvasId);
+        // Rethrow to propagate the error through the stream
+        rethrow;
       }
     }).handleError((error, stackTrace) {
       debugPrint('Error in canvas watch stream handler: $error');
@@ -410,6 +415,214 @@ class FirebaseDrawingRepository implements DrawingRepository {
     } catch (e) {
       debugPrint('Error deleting canvas image: $e');
       // Don't throw - image might not exist, which is okay
+    }
+  }
+
+  @override
+  Future<bool> checkCanvasAccess(String canvasId, String userId) async {
+    try {
+      debugPrint('Checking canvas access: canvas=$canvasId, user=$userId');
+
+      // Load the canvas document
+      final docSnapshot = await _getCanvasRef(canvasId).get();
+
+      if (!docSnapshot.exists) {
+        debugPrint('Canvas $canvasId does not exist, access denied');
+        return false;
+      }
+
+      final data = docSnapshot.data();
+      if (data == null) {
+        debugPrint('Canvas $canvasId has null data, access denied');
+        return false;
+      }
+
+      // Parse the canvas data
+      final model = DrawingDataModel.fromJson(data);
+      final entity = model.toEntity();
+
+      // Check access using the entity's hasAccess method
+      final hasAccess = entity.hasAccess(userId);
+
+      debugPrint(
+        'Canvas access check result: $hasAccess '
+        '(owner: ${entity.ownerId}, isPrivate: ${entity.isPrivate}, '
+        'teamMembers: ${entity.teamMembers.length})',
+      );
+
+      return hasAccess;
+    } catch (e, stackTrace) {
+      debugPrint('Error checking canvas access: $e');
+      debugPrint('Stack trace: $stackTrace');
+
+      if (e is FirebaseException) {
+        throw Exception('Failed to check canvas access: ${e.message}');
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> addTeamMember(String canvasId, String userId) async {
+    try {
+      debugPrint('Adding team member: canvas=$canvasId, user=$userId');
+
+      // Check if the user exists first (optional but recommended)
+      // This would require a UserRepository instance, so we'll skip for now
+      // and assume the calling code has verified the user exists
+
+      // Use Firestore arrayUnion to add the userId to teamMembers
+      // This is idempotent - adding an existing member does nothing
+      final docRef = _getCanvasRef(canvasId);
+
+      await docRef.update({
+        'teamMembers': FieldValue.arrayUnion([userId]),
+        'lastUpdated': DateTime.now().toIso8601String(),
+      });
+
+      debugPrint('Successfully added team member: user=$userId to canvas=$canvasId');
+    } catch (e, stackTrace) {
+      debugPrint('Error adding team member: $e');
+      debugPrint('Stack trace: $stackTrace');
+
+      if (e is FirebaseException) {
+        // Check if the error is due to missing document
+        if (e.code == 'not-found') {
+          throw Exception(
+            'Canvas $canvasId not found. Cannot add team member to non-existent canvas.',
+          );
+        }
+        throw Exception('Failed to add team member: ${e.message}');
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> removeTeamMember(String canvasId, String userId) async {
+    try {
+      debugPrint('Removing team member: canvas=$canvasId, user=$userId');
+
+      // Use Firestore arrayRemove to remove the userId from teamMembers
+      // This is idempotent - removing a non-existent member does nothing
+      final docRef = _getCanvasRef(canvasId);
+
+      await docRef.update({
+        'teamMembers': FieldValue.arrayRemove([userId]),
+        'lastUpdated': DateTime.now().toIso8601String(),
+      });
+
+      debugPrint('Successfully removed team member: user=$userId from canvas=$canvasId');
+    } catch (e, stackTrace) {
+      debugPrint('Error removing team member: $e');
+      debugPrint('Stack trace: $stackTrace');
+
+      if (e is FirebaseException) {
+        // Check if the error is due to missing document
+        if (e.code == 'not-found') {
+          throw Exception(
+            'Canvas $canvasId not found. Cannot remove team member from non-existent canvas.',
+          );
+        }
+        throw Exception('Failed to remove team member: ${e.message}');
+      }
+      rethrow;
+    }
+  }
+
+  /// Creates a new canvas with ownership information.
+  ///
+  /// This is a utility method for creating a canvas document with the
+  /// initial owner. It should be called when a user creates a new canvas.
+  ///
+  /// Parameters:
+  /// - [canvasId]: The unique identifier for the new canvas
+  /// - [ownerId]: The Firebase Auth UID of the canvas creator
+  /// - [isPrivate]: Whether the canvas is private (default: true)
+  ///
+  /// Returns:
+  /// - The newly created [DrawingData] entity
+  ///
+  /// Throws:
+  /// - Exception if the canvas already exists
+  /// - Exception if there's a network or permission error
+  Future<DrawingData> createCanvas({
+    required String canvasId,
+    required String ownerId,
+    bool isPrivate = true,
+  }) async {
+    try {
+      debugPrint(
+        'Creating canvas: $canvasId for owner: $ownerId (isPrivate: $isPrivate)',
+      );
+
+      // Check if canvas already exists
+      final docRef = _getCanvasRef(canvasId);
+      final docSnapshot = await docRef.get();
+
+      if (docSnapshot.exists) {
+        debugPrint('Canvas $canvasId already exists');
+        throw Exception(
+          'Canvas $canvasId already exists. Use loadCanvas() to load existing canvas.',
+        );
+      }
+
+      // Create empty canvas entity
+      final entity = DrawingData.empty(
+        canvasId,
+        ownerId: ownerId,
+        isPrivate: isPrivate,
+      );
+
+      // Convert to model and save to Firestore
+      final model = DrawingDataModel.fromEntity(entity);
+      await docRef.set(model.toJson());
+
+      debugPrint('Successfully created canvas: $canvasId for owner: $ownerId');
+
+      return entity;
+    } catch (e, stackTrace) {
+      debugPrint('Error creating canvas $canvasId: $e');
+      debugPrint('Stack trace: $stackTrace');
+
+      if (e is FirebaseException) {
+        throw Exception('Failed to create canvas: ${e.message}');
+      }
+      rethrow;
+    }
+  }
+
+  /// Updates the canvas privacy setting.
+  ///
+  /// This utility method allows changing whether a canvas is private or public.
+  /// Only the canvas owner should be allowed to change this setting.
+  ///
+  /// Parameters:
+  /// - [canvasId]: The unique identifier for the canvas
+  /// - [isPrivate]: Whether the canvas should be private
+  Future<void> updateCanvasPrivacy({
+    required String canvasId,
+    required bool isPrivate,
+  }) async {
+    try {
+      debugPrint('Updating canvas privacy: $canvasId to isPrivate=$isPrivate');
+
+      final docRef = _getCanvasRef(canvasId);
+
+      await docRef.update({
+        'isPrivate': isPrivate,
+        'lastUpdated': DateTime.now().toIso8601String(),
+      });
+
+      debugPrint('Successfully updated canvas privacy: $canvasId');
+    } catch (e, stackTrace) {
+      debugPrint('Error updating canvas privacy: $e');
+      debugPrint('Stack trace: $stackTrace');
+
+      if (e is FirebaseException) {
+        throw Exception('Failed to update canvas privacy: ${e.message}');
+      }
+      rethrow;
     }
   }
 }

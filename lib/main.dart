@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 import 'package:panci/presentation/screens/home_screen.dart';
 import 'package:panci/presentation/screens/canvas_join_screen.dart';
 import 'package:panci/presentation/screens/drawing_canvas_screen.dart';
+import 'package:panci/presentation/screens/auth/login_screen.dart';
+import 'package:panci/presentation/screens/auth/register_screen.dart';
+import 'package:panci/presentation/providers/auth_provider.dart';
 
 /// Main entry point of the Panci application.
 ///
@@ -28,11 +30,8 @@ void main() async {
     );
     debugPrint('Firebase initialized successfully');
 
-    // Sign in anonymously to enable Firestore security rules
-    // This provides each user with a unique user ID without requiring
-    // explicit sign-up or login
-    final userCredential = await FirebaseAuth.instance.signInAnonymously();
-    debugPrint('Signed in anonymously with user ID: ${userCredential.user?.uid}');
+    // Note: Authentication is now handled by AuthNotifier
+    // It will automatically sign in as guest if no user is authenticated
   } catch (e, stackTrace) {
     // Log initialization errors but continue to run the app
     // The app will show error messages when trying to use Firebase features
@@ -51,11 +50,12 @@ void main() async {
 /// Root widget of the Panci shared canvas application.
 ///
 /// Configures Material Design 3 theme, navigation routes, and app-wide settings.
-class PanciApp extends StatelessWidget {
+/// Integrates with authentication state to show loading/authenticated screens.
+class PanciApp extends ConsumerWidget {
   const PanciApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp(
       title: 'Panci - Shared Canvas',
       debugShowCheckedModeBanner: false,
@@ -122,13 +122,60 @@ class PanciApp extends StatelessWidget {
       // Set theme mode (can be changed to ThemeMode.system for automatic)
       themeMode: ThemeMode.light,
 
-      // Initial route
-      initialRoute: '/',
+      // Home screen with auth state check
+      home: Consumer(
+        builder: (context, ref, child) {
+          final authState = ref.watch(authProvider);
+
+          // Show loading while auth initializes
+          if (authState.status == AuthStatus.loading) {
+            return const Scaffold(
+              body: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Initializing...'),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          // If not authenticated, trigger guest sign-in
+          // This should not happen since AuthNotifier auto-signs in as guest
+          // but handle it just in case
+          if (authState.status == AuthStatus.unauthenticated) {
+            // Trigger sign-in asynchronously
+            Future.microtask(() {
+              ref.read(authProvider.notifier).signInAsGuest();
+            });
+
+            return const Scaffold(
+              body: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Setting up your account...'),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          // Authenticated - show home screen
+          return const HomeScreen();
+        },
+      ),
 
       // Named routes configuration
       routes: {
-        '/': (context) => const HomeScreen(),
         '/join': (context) => const CanvasJoinScreen(),
+        '/login': (context) => const LoginScreen(),
+        '/register': (context) => const RegisterScreen(),
       },
 
       // Handle routes that require arguments (like drawing screen)

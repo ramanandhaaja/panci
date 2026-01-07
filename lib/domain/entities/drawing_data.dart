@@ -6,6 +6,12 @@ import 'package:panci/domain/entities/drawing_stroke.dart';
 /// This is an immutable entity that contains all strokes on a canvas along
 /// with metadata. It provides methods for managing strokes while maintaining
 /// immutability through copy-on-write semantics.
+///
+/// Canvas ownership and access control:
+/// - Each canvas has an owner (the user who created it)
+/// - Owners can invite team members to collaborate
+/// - Private canvases are only accessible to the owner and team members
+/// - Public canvases can be viewed by anyone with the canvas ID
 @immutable
 class DrawingData {
   /// Creates drawing data for a canvas.
@@ -14,17 +20,32 @@ class DrawingData {
     required this.strokes,
     required this.lastUpdated,
     required this.version,
+    required this.ownerId,
+    this.teamMembers = const [],
+    this.isPrivate = true,
     this.imageUrl,
     this.lastExported,
   });
 
   /// Creates an empty drawing data for a new canvas.
-  factory DrawingData.empty(String canvasId) {
+  ///
+  /// Parameters:
+  /// - [canvasId]: The unique identifier for the canvas
+  /// - [ownerId]: The user ID of the canvas creator
+  /// - [isPrivate]: Whether the canvas is private (default: true)
+  factory DrawingData.empty(
+    String canvasId, {
+    required String ownerId,
+    bool isPrivate = true,
+  }) {
     return DrawingData(
       canvasId: canvasId,
       strokes: const [],
       lastUpdated: DateTime.now(),
       version: 0,
+      ownerId: ownerId,
+      teamMembers: const [],
+      isPrivate: isPrivate,
     );
   }
 
@@ -43,6 +64,38 @@ class DrawingData {
   ///
   /// Useful for conflict resolution in collaborative scenarios.
   final int version;
+
+  /// The user ID of the canvas creator/owner.
+  ///
+  /// The owner has full control over the canvas including:
+  /// - Adding/removing team members
+  /// - Deleting the canvas
+  /// - Changing privacy settings
+  final String ownerId;
+
+  /// List of user IDs who have access to this canvas.
+  ///
+  /// Team members can:
+  /// - View and edit the canvas
+  /// - Add and remove strokes
+  /// - Export the canvas
+  ///
+  /// They cannot:
+  /// - Add/remove other team members (only owner can)
+  /// - Delete the canvas (only owner can)
+  /// - Change privacy settings (only owner can)
+  final List<String> teamMembers;
+
+  /// Whether this canvas is private.
+  ///
+  /// Private canvases (default):
+  /// - Only accessible to owner and team members
+  /// - Require authentication to view
+  ///
+  /// Public canvases:
+  /// - Can be viewed by anyone with the canvas ID
+  /// - Still requires authentication to edit
+  final bool isPrivate;
 
   /// The download URL for the exported canvas image.
   ///
@@ -65,6 +118,33 @@ class DrawingData {
   ///
   /// Returns false if the canvas has reached the maximum stroke limit.
   bool get canAddStroke => strokeCount < maxStrokes;
+
+  /// Checks if a user has access to this canvas.
+  ///
+  /// A user has access if they are:
+  /// - The owner of the canvas, OR
+  /// - A team member, OR
+  /// - The canvas is public (read-only for non-members)
+  bool hasAccess(String userId) {
+    if (userId == ownerId) return true;
+    if (teamMembers.contains(userId)) return true;
+    if (!isPrivate) return true; // Public canvas - anyone can view
+    return false;
+  }
+
+  /// Checks if a user can edit this canvas.
+  ///
+  /// A user can edit if they are:
+  /// - The owner of the canvas, OR
+  /// - A team member
+  bool canEdit(String userId) {
+    if (userId == ownerId) return true;
+    if (teamMembers.contains(userId)) return true;
+    return false;
+  }
+
+  /// Checks if a user is the owner of this canvas.
+  bool isOwner(String userId) => userId == ownerId;
 
   /// Adds a new stroke to the canvas.
   ///
@@ -140,6 +220,9 @@ class DrawingData {
     List<DrawingStroke>? strokes,
     DateTime? lastUpdated,
     int? version,
+    String? ownerId,
+    List<String>? teamMembers,
+    bool? isPrivate,
     String? imageUrl,
     DateTime? lastExported,
   }) {
@@ -148,6 +231,9 @@ class DrawingData {
       strokes: strokes ?? this.strokes,
       lastUpdated: lastUpdated ?? this.lastUpdated,
       version: version ?? this.version,
+      ownerId: ownerId ?? this.ownerId,
+      teamMembers: teamMembers ?? this.teamMembers,
+      isPrivate: isPrivate ?? this.isPrivate,
       imageUrl: imageUrl ?? this.imageUrl,
       lastExported: lastExported ?? this.lastExported,
     );
@@ -162,6 +248,9 @@ class DrawingData {
         _listEquals(other.strokes, strokes) &&
         other.lastUpdated == lastUpdated &&
         other.version == version &&
+        other.ownerId == ownerId &&
+        _listEqualsString(other.teamMembers, teamMembers) &&
+        other.isPrivate == isPrivate &&
         other.imageUrl == imageUrl &&
         other.lastExported == lastExported;
   }
@@ -173,6 +262,9 @@ class DrawingData {
       Object.hashAll(strokes),
       lastUpdated,
       version,
+      ownerId,
+      Object.hashAll(teamMembers),
+      isPrivate,
       imageUrl,
       lastExported,
     );
@@ -181,11 +273,21 @@ class DrawingData {
   @override
   String toString() {
     return 'DrawingData(canvasId: $canvasId, strokeCount: $strokeCount, '
-        'lastUpdated: $lastUpdated, version: $version)';
+        'lastUpdated: $lastUpdated, version: $version, ownerId: $ownerId, '
+        'teamMembers: ${teamMembers.length}, isPrivate: $isPrivate)';
   }
 
   /// Helper method to compare lists of strokes.
   bool _listEquals(List<DrawingStroke> a, List<DrawingStroke> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  /// Helper method to compare lists of strings.
+  bool _listEqualsString(List<String> a, List<String> b) {
     if (a.length != b.length) return false;
     for (int i = 0; i < a.length; i++) {
       if (a[i] != b[i]) return false;

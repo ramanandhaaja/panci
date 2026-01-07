@@ -29,7 +29,9 @@
       "Bash(cat:*)",
       "Bash(tee:*)",
       "Bash(/usr/bin/tail:*)",
-      "Bash(openspec show:*)"
+      "Bash(openspec show:*)",
+      "Bash(openspec archive add-ui-screen-layouts:*)",
+      "Bash(openspec archive:*)"
     ]
   }
 }

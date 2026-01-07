@@ -134,7 +134,10 @@ class DrawingNotifier extends StateNotifier<DrawingState> {
     String? userId,
   })  : _userId = userId ?? FirebaseAuth.instance.currentUser?.uid ?? 'anonymous',
         super(DrawingState(
-          currentDrawing: DrawingData.empty(_canvasId),
+          currentDrawing: DrawingData.empty(
+            _canvasId,
+            ownerId: userId ?? FirebaseAuth.instance.currentUser?.uid ?? 'anonymous',
+          ),
         ));
 
   /// UUID generator for creating unique stroke IDs.
@@ -355,20 +358,41 @@ class DrawingNotifier extends StateNotifier<DrawingState> {
   ///
   /// This should be called when the canvas is first opened to load
   /// the existing drawing data from Firebase.
+  ///
+  /// This method includes access control checks:
+  /// - Verifies the user has permission to access the canvas
+  /// - Throws an exception if access is denied
   Future<void> loadCanvas() async {
     try {
-      debugPrint('Loading canvas $_canvasId...');
+      debugPrint('Loading canvas $_canvasId for user $_userId...');
+
+      // Check access first
+      final hasAccess = await _repository.checkCanvasAccess(_canvasId, _userId);
+      if (!hasAccess) {
+        debugPrint('Access denied to canvas $_canvasId for user $_userId');
+        throw Exception(
+          'You do not have permission to access this canvas. '
+          'Private canvases are only accessible to the owner and team members.',
+        );
+      }
+
+      debugPrint('Access granted to canvas $_canvasId for user $_userId');
+
       final data = await _repository.loadCanvas(_canvasId);
 
       // Only update if we're not currently drawing
       // to avoid overwriting the user's current stroke
       if (!state.isDrawing) {
         state = state.copyWith(currentDrawing: data);
-        debugPrint('Canvas $_canvasId loaded: ${data.strokeCount} strokes');
+        debugPrint(
+          'Canvas $_canvasId loaded: ${data.strokeCount} strokes, '
+          'owner: ${data.ownerId}, isPrivate: ${data.isPrivate}',
+        );
       }
     } catch (e) {
       debugPrint('Error loading canvas $_canvasId: $e');
-      // Keep the current state (empty canvas) on error
+      // Rethrow to let the caller handle the error
+      rethrow;
     }
   }
 

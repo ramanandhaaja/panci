@@ -40,6 +40,9 @@ void main() {
       strokes: [testStroke1, testStroke2],
       lastUpdated: testUpdated,
       version: 5,
+      ownerId: 'owner-user-123',
+      teamMembers: const ['team-user-1', 'team-user-2'],
+      isPrivate: true,
     );
 
     test('toJson converts DrawingDataModel to JSON map', () {
@@ -89,6 +92,9 @@ void main() {
         ],
         'lastUpdated': '2025-01-01T12:00:00.000Z',
         'version': 10,
+        'ownerId': 'owner-user-456',
+        'teamMembers': ['team-member-1'],
+        'isPrivate': false,
       };
 
       final model = DrawingDataModel.fromJson(json);
@@ -99,6 +105,9 @@ void main() {
       expect(model.strokes.length, 2);
       expect(model.strokes[0]['id'], 'stroke-a');
       expect(model.strokes[1]['id'], 'stroke-b');
+      expect(model.ownerId, 'owner-user-456');
+      expect(model.teamMembers, ['team-member-1']);
+      expect(model.isPrivate, false);
     });
 
     test('toEntity converts model to DrawingData entity', () {
@@ -144,6 +153,7 @@ void main() {
         strokes: const [],
         lastUpdated: testUpdated,
         version: 0,
+        ownerId: 'owner-empty',
       );
 
       final model = DrawingDataModel.fromEntity(emptyEntity);
@@ -165,6 +175,7 @@ void main() {
         strokes: [testStroke1],
         lastUpdated: testUpdated,
         version: 1,
+        ownerId: 'owner-single',
       );
 
       final model = DrawingDataModel.fromEntity(singleStrokeEntity);
@@ -193,6 +204,7 @@ void main() {
         strokes: strokes,
         lastUpdated: testUpdated,
         version: 10,
+        ownerId: 'owner-multi',
       );
 
       final model = DrawingDataModel.fromEntity(multiStrokeEntity);
@@ -269,6 +281,7 @@ void main() {
         strokes: strokes,
         lastUpdated: testUpdated,
         version: 3,
+        ownerId: 'owner-order',
       );
 
       final model = DrawingDataModel.fromEntity(entity);
@@ -285,6 +298,7 @@ void main() {
         strokes: const [],
         lastUpdated: testUpdated,
         version: 0,
+        ownerId: 'owner-v0',
       );
 
       final model = DrawingDataModel.fromEntity(entity);
@@ -300,6 +314,7 @@ void main() {
         strokes: const [],
         lastUpdated: testUpdated,
         version: 999999,
+        ownerId: 'owner-large',
       );
 
       final model = DrawingDataModel.fromEntity(entity);
@@ -322,6 +337,7 @@ void main() {
           strokes: const [],
           lastUpdated: timestamp,
           version: 1,
+          ownerId: 'owner-time',
         );
 
         final model = DrawingDataModel.fromEntity(entity);
@@ -400,6 +416,7 @@ void main() {
         strokes: [stroke1, stroke2],
         lastUpdated: testUpdated,
         version: 2,
+        ownerId: 'owner-points',
       );
 
       final model = DrawingDataModel.fromEntity(entity);
@@ -410,18 +427,338 @@ void main() {
     });
 
     test('handles DrawingData.empty factory', () {
-      final emptyEntity = DrawingData.empty('empty-canvas-id');
+      final emptyEntity = DrawingData.empty(
+        'empty-canvas-id',
+        ownerId: 'owner-123',
+      );
 
       final model = DrawingDataModel.fromEntity(emptyEntity);
 
       expect(model.canvasId, 'empty-canvas-id');
       expect(model.strokes, isEmpty);
       expect(model.version, 0);
+      expect(model.ownerId, 'owner-123');
 
       final resultEntity = model.toEntity();
       expect(resultEntity.canvasId, 'empty-canvas-id');
       expect(resultEntity.strokes, isEmpty);
       expect(resultEntity.version, 0);
+      expect(resultEntity.ownerId, 'owner-123');
+    });
+
+    // Tests for new ownership fields
+
+    test('toJson includes ownership fields', () {
+      final entity = DrawingData(
+        canvasId: 'test-canvas',
+        strokes: const [],
+        lastUpdated: testUpdated,
+        version: 1,
+        ownerId: 'owner-user-id',
+        teamMembers: const ['member-1', 'member-2', 'member-3'],
+        isPrivate: false,
+      );
+
+      final model = DrawingDataModel.fromEntity(entity);
+      final json = model.toJson();
+
+      expect(json['ownerId'], 'owner-user-id');
+      expect(json['teamMembers'], ['member-1', 'member-2', 'member-3']);
+      expect(json['isPrivate'], false);
+    });
+
+    test('fromJson handles missing teamMembers with default empty list', () {
+      final json = {
+        'canvasId': 'canvas-id',
+        'strokes': [],
+        'lastUpdated': '2025-01-01T12:00:00.000Z',
+        'version': 1,
+        'ownerId': 'owner-id',
+        // teamMembers is missing
+        'isPrivate': true,
+      };
+
+      final model = DrawingDataModel.fromJson(json);
+
+      expect(model.teamMembers, isEmpty);
+      expect(model.teamMembers, const []);
+    });
+
+    test('fromJson handles missing isPrivate with default true', () {
+      final json = {
+        'canvasId': 'canvas-id',
+        'strokes': [],
+        'lastUpdated': '2025-01-01T12:00:00.000Z',
+        'version': 1,
+        'ownerId': 'owner-id',
+        'teamMembers': [],
+        // isPrivate is missing
+      };
+
+      final model = DrawingDataModel.fromJson(json);
+
+      expect(model.isPrivate, true);
+    });
+
+    test('handles empty teamMembers list', () {
+      final entity = DrawingData(
+        canvasId: 'test-canvas',
+        strokes: const [],
+        lastUpdated: testUpdated,
+        version: 1,
+        ownerId: 'owner-id',
+        teamMembers: const [],
+        isPrivate: true,
+      );
+
+      final model = DrawingDataModel.fromEntity(entity);
+      expect(model.teamMembers, isEmpty);
+
+      final json = model.toJson();
+      expect(json['teamMembers'], isEmpty);
+
+      final parsedModel = DrawingDataModel.fromJson(json);
+      expect(parsedModel.teamMembers, isEmpty);
+
+      final resultEntity = parsedModel.toEntity();
+      expect(resultEntity.teamMembers, isEmpty);
+    });
+
+    test('handles single team member', () {
+      final entity = DrawingData(
+        canvasId: 'test-canvas',
+        strokes: const [],
+        lastUpdated: testUpdated,
+        version: 1,
+        ownerId: 'owner-id',
+        teamMembers: const ['member-1'],
+        isPrivate: true,
+      );
+
+      final model = DrawingDataModel.fromEntity(entity);
+      expect(model.teamMembers, ['member-1']);
+
+      final json = model.toJson();
+      expect(json['teamMembers'], ['member-1']);
+
+      final parsedModel = DrawingDataModel.fromJson(json);
+      expect(parsedModel.teamMembers, ['member-1']);
+
+      final resultEntity = parsedModel.toEntity();
+      expect(resultEntity.teamMembers, ['member-1']);
+    });
+
+    test('handles multiple team members', () {
+      final entity = DrawingData(
+        canvasId: 'test-canvas',
+        strokes: const [],
+        lastUpdated: testUpdated,
+        version: 1,
+        ownerId: 'owner-id',
+        teamMembers: const ['member-1', 'member-2', 'member-3', 'member-4'],
+        isPrivate: true,
+      );
+
+      final model = DrawingDataModel.fromEntity(entity);
+      expect(model.teamMembers.length, 4);
+
+      final json = model.toJson();
+      expect(json['teamMembers'].length, 4);
+
+      final parsedModel = DrawingDataModel.fromJson(json);
+      expect(parsedModel.teamMembers.length, 4);
+      expect(parsedModel.teamMembers, [
+        'member-1',
+        'member-2',
+        'member-3',
+        'member-4',
+      ]);
+
+      final resultEntity = parsedModel.toEntity();
+      expect(resultEntity.teamMembers.length, 4);
+    });
+
+    test('isPrivate true is serialized correctly', () {
+      final entity = DrawingData(
+        canvasId: 'test-canvas',
+        strokes: const [],
+        lastUpdated: testUpdated,
+        version: 1,
+        ownerId: 'owner-id',
+        isPrivate: true,
+      );
+
+      final model = DrawingDataModel.fromEntity(entity);
+      expect(model.isPrivate, true);
+
+      final json = model.toJson();
+      expect(json['isPrivate'], true);
+
+      final parsedModel = DrawingDataModel.fromJson(json);
+      expect(parsedModel.isPrivate, true);
+    });
+
+    test('isPrivate false is serialized correctly', () {
+      final entity = DrawingData(
+        canvasId: 'test-canvas',
+        strokes: const [],
+        lastUpdated: testUpdated,
+        version: 1,
+        ownerId: 'owner-id',
+        isPrivate: false,
+      );
+
+      final model = DrawingDataModel.fromEntity(entity);
+      expect(model.isPrivate, false);
+
+      final json = model.toJson();
+      expect(json['isPrivate'], false);
+
+      final parsedModel = DrawingDataModel.fromJson(json);
+      expect(parsedModel.isPrivate, false);
+    });
+
+    test('ownership fields roundtrip preserves data', () {
+      final entity = DrawingData(
+        canvasId: 'roundtrip-canvas',
+        strokes: const [],
+        lastUpdated: testUpdated,
+        version: 1,
+        ownerId: 'owner-user-xyz',
+        teamMembers: const ['user-a', 'user-b', 'user-c'],
+        isPrivate: false,
+      );
+
+      // Entity → Model → JSON → Model → Entity
+      final model1 = DrawingDataModel.fromEntity(entity);
+      final json = model1.toJson();
+      final model2 = DrawingDataModel.fromJson(json);
+      final resultEntity = model2.toEntity();
+
+      expect(resultEntity.ownerId, entity.ownerId);
+      expect(resultEntity.teamMembers, entity.teamMembers);
+      expect(resultEntity.isPrivate, entity.isPrivate);
+    });
+
+    test('equality includes ownership fields', () {
+      final entity1 = DrawingData(
+        canvasId: 'canvas-1',
+        strokes: const [],
+        lastUpdated: testUpdated,
+        version: 1,
+        ownerId: 'owner-1',
+        teamMembers: const ['member-1'],
+        isPrivate: true,
+      );
+
+      final entity2 = DrawingData(
+        canvasId: 'canvas-1',
+        strokes: const [],
+        lastUpdated: testUpdated,
+        version: 1,
+        ownerId: 'owner-1',
+        teamMembers: const ['member-1'],
+        isPrivate: true,
+      );
+
+      final model1 = DrawingDataModel.fromEntity(entity1);
+      final model2 = DrawingDataModel.fromEntity(entity2);
+
+      expect(model1, equals(model2));
+    });
+
+    test('inequality with different ownerId', () {
+      final entity1 = DrawingData(
+        canvasId: 'canvas-1',
+        strokes: const [],
+        lastUpdated: testUpdated,
+        version: 1,
+        ownerId: 'owner-1',
+      );
+
+      final entity2 = DrawingData(
+        canvasId: 'canvas-1',
+        strokes: const [],
+        lastUpdated: testUpdated,
+        version: 1,
+        ownerId: 'owner-2',
+      );
+
+      final model1 = DrawingDataModel.fromEntity(entity1);
+      final model2 = DrawingDataModel.fromEntity(entity2);
+
+      expect(model1, isNot(equals(model2)));
+    });
+
+    test('inequality with different teamMembers', () {
+      final entity1 = DrawingData(
+        canvasId: 'canvas-1',
+        strokes: const [],
+        lastUpdated: testUpdated,
+        version: 1,
+        ownerId: 'owner-1',
+        teamMembers: const ['member-1', 'member-2'],
+      );
+
+      final entity2 = DrawingData(
+        canvasId: 'canvas-1',
+        strokes: const [],
+        lastUpdated: testUpdated,
+        version: 1,
+        ownerId: 'owner-1',
+        teamMembers: const ['member-1', 'member-3'],
+      );
+
+      final model1 = DrawingDataModel.fromEntity(entity1);
+      final model2 = DrawingDataModel.fromEntity(entity2);
+
+      expect(model1, isNot(equals(model2)));
+    });
+
+    test('inequality with different isPrivate', () {
+      final entity1 = DrawingData(
+        canvasId: 'canvas-1',
+        strokes: const [],
+        lastUpdated: testUpdated,
+        version: 1,
+        ownerId: 'owner-1',
+        isPrivate: true,
+      );
+
+      final entity2 = DrawingData(
+        canvasId: 'canvas-1',
+        strokes: const [],
+        lastUpdated: testUpdated,
+        version: 1,
+        ownerId: 'owner-1',
+        isPrivate: false,
+      );
+
+      final model1 = DrawingDataModel.fromEntity(entity1);
+      final model2 = DrawingDataModel.fromEntity(entity2);
+
+      expect(model1, isNot(equals(model2)));
+    });
+
+    test('toString includes ownership fields', () {
+      final entity = DrawingData(
+        canvasId: 'test-canvas',
+        strokes: const [],
+        lastUpdated: testUpdated,
+        version: 1,
+        ownerId: 'owner-123',
+        teamMembers: const ['member-1', 'member-2'],
+        isPrivate: true,
+      );
+
+      final model = DrawingDataModel.fromEntity(entity);
+      final string = model.toString();
+
+      expect(string, contains('DrawingDataModel'));
+      expect(string, contains('test-canvas'));
+      expect(string, contains('owner-123'));
+      expect(string, contains('2')); // team member count
+      expect(string, contains('true')); // isPrivate
     });
   });
 }

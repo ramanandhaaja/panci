@@ -14,10 +14,14 @@ class ActiveCanvasCard extends ConsumerWidget {
   /// Callback when the canvas is tapped to open
   final VoidCallback onOpen;
 
+  /// Optional callback when the delete button is tapped
+  final VoidCallback? onDelete;
+
   /// Creates an active canvas card
   const ActiveCanvasCard({
     required this.canvas,
     required this.onOpen,
+    this.onDelete,
     super.key,
   });
 
@@ -47,6 +51,16 @@ class ActiveCanvasCard extends ConsumerWidget {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                const Spacer(),
+                // Delete button
+                if (onDelete != null)
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: onDelete,
+                    tooltip: 'Delete canvas',
+                    iconSize: 20,
+                    color: theme.colorScheme.error,
+                  ),
               ],
             ),
             const SizedBox(height: 16),
@@ -249,10 +263,14 @@ class RecentCanvasCard extends ConsumerWidget {
   /// Callback when the canvas is tapped
   final VoidCallback onTap;
 
+  /// Optional callback when the delete button is tapped
+  final VoidCallback? onDelete;
+
   /// Creates a recent canvas card
   const RecentCanvasCard({
     required this.canvas,
     required this.onTap,
+    this.onDelete,
     super.key,
   });
 
@@ -379,11 +397,20 @@ class RecentCanvasCard extends ConsumerWidget {
                 ),
               ),
 
-              // Arrow icon
-              Icon(
-                Icons.chevron_right,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              // Delete button and arrow icon
+              if (onDelete != null)
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: onDelete,
+                  tooltip: 'Delete canvas',
+                  iconSize: 20,
+                  color: theme.colorScheme.error,
+                )
+              else
+                Icon(
+                  Icons.chevron_right,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
             ],
           ),
         ),

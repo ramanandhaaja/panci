@@ -1,15 +1,19 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:panci/domain/entities/canvas_entity.dart';
+import 'package:panci/presentation/providers/auth_provider.dart';
 
 /// Provider that fetches the list of recent canvases from Firebase.
 ///
-/// This provider queries Firestore for canvas documents, ordered by
-/// lastUpdated timestamp. It converts the Firestore data into
-/// CanvasEntity domain objects for display on the home screen.
+/// This provider queries Firestore for canvas documents owned by the
+/// current user, ordered by lastUpdated timestamp. It converts the
+/// Firestore data into CanvasEntity domain objects for display on the
+/// home screen.
 ///
 /// The provider returns a list of canvases sorted by most recent first.
 /// If there are no canvases, it returns an empty list.
+///
+/// The provider automatically updates when the user changes (login/logout).
 ///
 /// Usage:
 /// ```dart
@@ -23,16 +27,35 @@ import 'package:panci/domain/entities/canvas_entity.dart';
 /// ```
 final canvasListProvider = StreamProvider<List<CanvasEntity>>((ref) {
   final firestore = FirebaseFirestore.instance;
+  final authState = ref.watch(authProvider);
+  final currentUserId = authState.userId;
 
-  // Query canvases collection, ordered by lastUpdated descending
+  // If no user is authenticated, return empty stream
+  if (currentUserId == null) {
+    return Stream.value([]);
+  }
+
+  // Query canvases collection, filtered by owner
+  // Note: orderBy requires a composite index (ownerId + lastUpdated)
+  // Temporarily removed until index is deployed
   return firestore
       .collection('canvases')
-      .orderBy('lastUpdated', descending: true)
+      .where('ownerId', isEqualTo: currentUserId)
+      // .orderBy('lastUpdated', descending: true)  // Commented out until index deployed
       .limit(10) // Limit to 10 most recent canvases
       .snapshots()
       .map((snapshot) {
-    // Convert Firestore documents to CanvasEntity objects
-    return snapshot.docs.map((doc) {
+    // Sort in memory since we can't use orderBy yet
+    final docs = snapshot.docs.toList();
+    docs.sort((a, b) {
+      final aTime = a.data()['lastUpdated'] as String?;
+      final bTime = b.data()['lastUpdated'] as String?;
+      if (aTime == null || bTime == null) return 0;
+      return DateTime.parse(bTime).compareTo(DateTime.parse(aTime));
+    });
+
+    // Convert sorted documents to CanvasEntity objects
+    return docs.map((doc) {
       final data = doc.data();
 
       // Extract canvas metadata from Firestore document

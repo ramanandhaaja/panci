@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:panci/domain/repositories/drawing_repository.dart';
+import 'package:panci/domain/repositories/user_repository.dart';
 import 'package:panci/data/repositories/firebase_drawing_repository.dart';
+import 'package:panci/data/repositories/firebase_user_repository.dart';
 
 /// Provider for the drawing repository.
 ///
@@ -35,4 +37,40 @@ final drawingRepositoryProvider = Provider<DrawingRepository>((ref) {
   // In the future, this could be conditional based on environment,
   // feature flags, or A/B testing
   return FirebaseDrawingRepository();
+});
+
+/// Provider for the user repository.
+///
+/// This provider creates and manages the [UserRepository] instance
+/// used throughout the application for user profile operations.
+/// Following clean architecture and dependency injection principles,
+/// this provider:
+///
+/// - Provides a single source of truth for user data
+/// - Allows easy testing by swapping implementations
+/// - Manages the repository lifecycle
+/// - Enables access from any widget via Riverpod
+///
+/// The repository is created once and cached for the lifetime of the app.
+/// To override for testing, use ProviderScope with overrides:
+///
+/// ```dart
+/// ProviderScope(
+///   overrides: [
+///     userRepositoryProvider.overrideWithValue(mockRepository),
+///   ],
+///   child: MyApp(),
+/// )
+/// ```
+///
+/// Usage in widgets:
+/// ```dart
+/// final repository = ref.read(userRepositoryProvider);
+/// await repository.getUserProfile(userId);
+/// ```
+final userRepositoryProvider = Provider<UserRepository>((ref) {
+  // Create the Firebase implementation of the repository
+  // In the future, this could be conditional based on environment,
+  // feature flags, or A/B testing
+  return FirebaseUserRepository();
 });
